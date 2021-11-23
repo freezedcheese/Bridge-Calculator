@@ -52,3 +52,5 @@ node_6.add_neighbour(node_3)
 node_3.add_neighbour(node_7)
 node_7.add_neighbour(node_4)
 
+a=1
+
