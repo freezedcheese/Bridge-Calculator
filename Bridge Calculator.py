@@ -1,6 +1,9 @@
 import math
 import turtle
 
+def find_hyp(x, y):
+    return math.sqrt(x**2 + y**2)
+
 class Vector():
     def __init__(self, x_dir, y_dir, mag=1):
         self.x_dir = x_dir
@@ -22,11 +25,13 @@ class Vector():
     def set_mag(self, mag):
         self.mag = mag
     
-    def set_mag_by_x_mag(self, x_mag_comp):
-        self.mag = x_mag_comp * (find_hyp(self.x_dir, self.y_dir) / self.x_dir)
-    
-    def set_mag_by_y_mag(self, y_mag_comp):
-        self.mag = y_mag_comp * (find_hyp(self.x_dir, self.y_dir) / self.y_dir)
+    def set_mag_by_comp(self, x_mag_comp, y_mag_comp):
+        if self.x_dir != 0:
+            self.mag = x_mag_comp * (find_hyp(self.x_dir, self.y_dir) / self.x_dir)
+        elif self.y_dir != 0:
+            self.mag = y_mag_comp * (find_hyp(self.x_dir, self.y_dir) / self.y_dir)
+        else:
+            self.mag = 0
 
 class TrussNode():
     def __init__(self, loc=(0,0)):
@@ -40,18 +45,17 @@ class TrussNode():
         self.neighbours.append(TrussNode(neighbour_loc))
         self.neighbours[-1].neighbours.append(self)
 
-        self.internal_forces[self.neighbours[-1]] = []
-
         return self.neighbours[-1]
     
     def add_neighbour(self, neighbour):
         self.neighbours.append(neighbour)
         neighbour.neighbours.append(self)
-
-        self.internal_forces[self.neighbours[-1]] = []
     
     def add_external_force(self, force):
         self.external_forces.append(force)
+    
+    def calc_rel_pos(self, neighbour):
+        return Vector(neighbour.loc[0] - self.loc[0], neighbour.loc[1] - self.loc[1])
 
     def calc_internal_forces(self, debug_print=False):
         unknown_internal_forces = []
@@ -82,69 +86,135 @@ class TrussNode():
 
             if f_a.get_x_mag() == 0:
                 self.internal_forces[unknown_internal_forces[1]].set_mag(-(f_b.get_mag()/f_b.get_x_mag()) * f_x_tot)
-                self.internal_forces[unknown_internal_forces[0]].set_mag(-f_y_tot - self.internal_forces[unknown_internal_forces[1]].get_mag() * (f_b.get_y_mag()/f_b.get_mag()))
+                if f_b.get_mag() == 0:
+                    self.internal_forces[unknown_internal_forces[0]].set_mag_by_comp(-f_x_tot, -f_y_tot)
+                else:
+                    self.internal_forces[unknown_internal_forces[0]].set_mag(-f_y_tot - self.internal_forces[unknown_internal_forces[1]].get_mag() * (f_b.get_y_mag()/f_b.get_mag()))
             elif f_a.get_y_mag() == 0:
                 self.internal_forces[unknown_internal_forces[1]].set_mag(-(f_b.get_mag()/f_b.get_y_mag()) * f_y_tot)
-                self.internal_forces[unknown_internal_forces[0]].set_mag(-f_x_tot - self.internal_forces[unknown_internal_forces[1]].get_mag() * (f_b.get_x_mag()/f_b.get_mag()))
+                if f_b.get_mag() == 0:
+                    self.internal_forces[unknown_internal_forces[0]].set_mag_by_comp(-f_x_tot, -f_y_tot)
+                else:
+                    self.internal_forces[unknown_internal_forces[0]].set_mag(-f_x_tot - self.internal_forces[unknown_internal_forces[1]].get_mag() * (f_b.get_x_mag()/f_b.get_mag()))
             else:
                 self.internal_forces[unknown_internal_forces[1]].set_mag((f_b.get_mag() * (f_y_tot/f_a.get_y_mag() - f_x_tot/f_a.get_x_mag())) / (f_b.get_x_mag()/f_a.get_x_mag() - f_b.get_y_mag()/f_a.get_y_mag()))
                 self.internal_forces[unknown_internal_forces[0]].set_mag((f_a.get_mag()/f_a.get_x_mag()) * (-f_x_tot - self.internal_forces[unknown_internal_forces[1]].get_mag() * (f_b.get_x_mag()/f_b.get_mag())))
         
         elif len(unknown_internal_forces) == 1:
-            self.internal_forces[unknown_internal_forces[0]].set_mag(find_hyp(f_x_tot, self.f_y_tot))
+            self.internal_forces[unknown_internal_forces[0]].set_mag_by_comp(-f_x_tot, -f_y_tot)
 
         if debug_print:
             for thing in self.neighbours:
-                print(self.internal_forces[thing].get_x_mag(), self.internal_forces[thing].get_y_mag(), "tension" if self.internal_forces[thing].get_x_mag() / (thing.loc[0] - self.loc[0]) > 0 else "compression")
+                print(self.internal_forces[thing].get_mag())
 
-def find_hyp(x, y):
-    return math.sqrt(x**2 + y**2)
+class Truss():
+    def __init__(self, flattop, csa, young_mod):
+        '''
+        flattop: Flattop (bool)
+        csa: Cross-Sectional Area (mm^2)
+        yound_mod: Young's Modulus (MPa)
+        '''
+        self.flattop = flattop
+        self.csa = csa
+        self.young_mod = young_mod
 
-def draw_truss(truss):
-    SCALE = 20
-    turtle.speed(10)
-    for node in truss:
-        for neighbour in node.neighbours:
-            turtle.penup()
-            turtle.goto((node.loc[0] * SCALE, node.loc[1] * SCALE))
-            turtle.pendown()
-            turtle.goto((neighbour.loc[0] * SCALE, neighbour.loc[1] * SCALE))
+        self.truss_list = []
+        self.lengths = {}
+        self.internal_forces = {}
+        self.deformations = {}
+
+    def gen_warren_truss(self, triangle_count, diagonal):
+        self.truss_list = []
+        self.truss_list.append(TrussNode())
+
+        for i in range(triangle_count):
+            self.truss_list.append(self.truss_list[-1].new_neighbour_rel(diagonal))
+            self.truss_list.append(self.truss_list[-1].new_neighbour_rel((diagonal[0], -diagonal[1])))
+
+        for i in range(0,triangle_count*2,2):
+            self.truss_list[i].add_neighbour(self.truss_list[i+2])
+
+        for i in range(1,triangle_count*2-1,2):
+            self.truss_list[i].add_neighbour(self.truss_list[i+2])
+
+        if self.flattop:
+            self.truss_list.append(self.truss_list[-1].new_neighbour_rel((0,diagonal[1])))
+            self.truss_list.append(self.truss_list[0].new_neighbour_rel((0,diagonal[1])))
+
+            self.truss_list[-2].add_neighbour(self.truss_list[-4])
+            self.truss_list[-1].add_neighbour(self.truss_list[1])
+
+        for node in self.truss_list:
+            for neighbour in node.neighbours:
+                key = tuple(sorted([self.truss_list.index(node), self.truss_list.index(neighbour)]))
+
+                self.lengths[key] = find_hyp(node.calc_rel_pos(neighbour).x_dir, node.calc_rel_pos(neighbour).y_dir)
+
+    def update_forces(self, force_dict):
+        for key in force_dict:
+            self.truss_list[key].add_external_force(force_dict[key])
+
+        if self.flattop:
+            self.truss_list[-1].calc_internal_forces()
+            self.truss_list[-2].calc_internal_forces()
+
+        for node in self.truss_list:
+            node.calc_internal_forces()
+
+        for node in self.truss_list:
+            for neighbour in node.internal_forces:
+                key = tuple(sorted([self.truss_list.index(node), self.truss_list.index(neighbour)]))
+
+                if node.calc_rel_pos(neighbour).get_x_mag() != 0:
+                    self.internal_forces[key] = abs(node.internal_forces[neighbour].get_mag()) * (-1 if node.internal_forces[neighbour].get_x_mag() / node.calc_rel_pos(neighbour).get_x_mag() < 0 else 1)
+                else:
+                    self.internal_forces[key] = abs(node.internal_forces[neighbour].get_mag()) * (-1 if node.internal_forces[neighbour].get_y_mag() / node.calc_rel_pos(neighbour).get_y_mag() < 0 else 1)
+    
+    def calc_deformations(self):
+        for key in self.internal_forces:
+            self.deformations[key] = ((self.internal_forces[key] / self.csa) / self.young_mod) * self.lengths[key]
+    
+    def dist_loads(self):
+        for node in self.truss_list:
+            for neighbour in node.neighbours:
+                pass
         
-    turtle.mainloop()
+    def draw_truss(self, colour=False):
+        SCALE = 15
+        COLOUR_MULT = 0.5
+        turtle.speed(0)
+        turtle.colormode(255)
+        turtle.Screen().tracer(0)
 
-#simple truss
-node_1 = TrussNode((0,0))
-node_2 = node_1.new_neighbour_rel((6,0))
-node_3 = node_2.new_neighbour_rel((6,0))
-node_4 = node_3.new_neighbour_rel((6,0))
-node_5 = node_4.new_neighbour_rel((6,0))
+        max_x = 0
+        for node in self.truss_list:
+            max_x = node.loc[0] if node.loc[0] > max_x else max_x
+        
+        x_offset = max_x * SCALE / 2
 
-node_6 = TrussNode((3,4))
-node_7 = node_6.new_neighbour_rel((6,0))
-node_8 = node_7.new_neighbour_rel((6,0))
-node_9 = node_8.new_neighbour_rel((6,0))
+        for node in self.truss_list:
+            for neighbour in node.neighbours:
+                turtle.penup()
+                if colour:
+                    if node.calc_rel_pos(neighbour).get_x_mag() != 0:
+                        RED_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_x_mag() / node.calc_rel_pos(neighbour).get_x_mag() < 0 else 0
+                        BLUE_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_x_mag() / node.calc_rel_pos(neighbour).get_x_mag() > 0 else 0
+                    else:
+                        RED_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_y_mag() / node.calc_rel_pos(neighbour).get_y_mag() < 0 else 0
+                        BLUE_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_y_mag() / node.calc_rel_pos(neighbour).get_y_mag() > 0 else 0
+                    turtle.pencolor(int(abs(node.internal_forces[neighbour].get_mag()) * RED_MULT), 0, int(abs(node.internal_forces[neighbour].get_mag()) * BLUE_MULT))
+                turtle.goto((node.loc[0] * SCALE - x_offset, node.loc[1] * SCALE))
+                turtle.pendown()
+                turtle.goto((neighbour.loc[0] * SCALE - x_offset, neighbour.loc[1] * SCALE))
+        
+        turtle.Screen().update()
+        
+        turtle.mainloop()
 
-node_1.add_neighbour(node_6)
-node_6.add_neighbour(node_2)
-node_2.add_neighbour(node_7)
-node_7.add_neighbour(node_3)
-node_3.add_neighbour(node_8)
-node_8.add_neighbour(node_4)
-node_4.add_neighbour(node_9)
-node_9.add_neighbour(node_5)
+truss = Truss(True, 1,1)
+truss.gen_warren_truss(16, (3,4))
 
-node_1.add_external_force(Vector(0, 1, 120))
-node_2.add_external_force(Vector(0, 1, -80))
-node_3.add_external_force(Vector(0, 1, -80))
-node_4.add_external_force(Vector(0, 1, -80))
-node_5.add_external_force(Vector(0, 1, 120))
+truss_forces = {0: Vector(0,1,40), 32: Vector(0,1,40), 16: Vector(0,-1,80)}
 
-node_1.calc_internal_forces()
-node_6.calc_internal_forces()
-node_2.calc_internal_forces()
-node_7.calc_internal_forces()
-node_3.calc_internal_forces(True)
-
-truss = [node_1, node_2, node_3, node_4, node_5, node_6, node_7, node_8, node_9]
-
-draw_truss(truss)
+truss.update_forces(truss_forces)
+truss.draw_truss(True)
