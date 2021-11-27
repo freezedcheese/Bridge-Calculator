@@ -462,11 +462,12 @@ class BeamSlice():
         A8 = 0
         y8 = 0
 
-        # if A6 != 0:
-        #     A7 = A2
-        #     y7 = self.web_thickness/2 + self.bottom_thickness
-        #     A8 = A2
-        #     y8 = y7
+        #COMMENT OUT TO SOLVE DESIGN 0
+        if A6 != 0:
+            A7 = A2
+            y7 = self.web_thickness/2 + self.bottom_thickness
+            A8 = A2
+            y8 = y7
 
         self.centroidal_axis = (A1*y1 + A2*y2 + A3*y3 + A4*y4 + A5*y5 + A6*y6 + A7*y7 + A8*y8)/(A1 + A2 + A3 + A4 + A5 + A6 + A7 + A8)
 
@@ -479,9 +480,10 @@ class BeamSlice():
         I7 = 0
         I8 = 0
 
-        #if A6 != 0:
-            #I7 = self.tab_width*self.web_thickness**3/12
-            #I8 = self.tab_width*self.web_thickness**3/12
+        #COMMENT OUT TO SOLVE DESIGN 0
+        if A6 != 0:
+            I7 = self.tab_width*self.web_thickness**3/12
+            I8 = self.tab_width*self.web_thickness**3/12
 
         self.second_moment_area = I1 + I2 + I3 + I4 + I5 + I6 + I7 + I8 + A1*(self.centroidal_axis-y1)**2 + A2*(self.centroidal_axis-y2)**2 + A3*(self.centroidal_axis-y3)**2 + A4*(self.centroidal_axis-y4)**2 + A5*(self.centroidal_axis-y5)**2 + A6*(self.centroidal_axis-y6)**2 + + A7*(self.centroidal_axis-y7)**2 + + A8*(self.centroidal_axis-y8)**2
 
@@ -829,22 +831,8 @@ class Bridge():
         self.beam.add_load(loc, Vector(load.x_dir, load.y_dir, load.get_mag()/2))
 
 
-# truss_cs_properties =  {"width": 80, "thickness": 1.27}
+truss_cs_properties =  {"width": 80, "thickness": 1.27}
 
-# truss = Truss(True, 200000, 0.2, 30, 6, truss_cs_properties)
-# truss.gen_warren_truss(16, (3000,4000))
-
-# truss.add_load((42, 0), Vector(0,-1,100))
-
-# truss.set_rxn_locs((0,0), (90,0))
-# truss.update_rxn_forces()
-
-# truss.update_internal_forces()
-
-# print(truss.calc_displacement_at_node((42, 0), Vector(0,-1,1)))
-
-
-#UNCOMMENT STUFF IN I CALCULATION
 beam_segments =    [((0,1280),      {"top_thickness": 1.27,
                                     "top_width": 100,
                                     "web_thickness": 1.27,
@@ -857,24 +845,16 @@ beam_segments =    [((0,1280),      {"top_thickness": 1.27,
 
 beam_diaphragms =  [0, 30, 550, 580, 1060, 1090, 1250, 1280]
 
-beam = Beam(4000, 0.2, 30, 6, 4, 2, beam_segments, beam_diaphragms, 1000)
+bridge = Bridge(True, 40000, 0.2, 30, 6, 4, 2, truss_cs_properties, beam_segments, beam_diaphragms, 1000)
 
-beam.gen_beam()
+bridge.set_rxn_locs((15,0), (1075,0))
+bridge.add_load((565,0), Vector(0,-1,1000))
+bridge.add_load((1265,0), Vector(0,-1,1000))
 
-beam.add_load((565,0), Vector(0,-1,200))
-beam.add_load((1265,0), Vector(0,-1,200))
+bridge.truss.
 
-beam.set_rxn_locs((15,0), (1075,0))
-beam.update_rxn_forces()
-
-print(beam.beam_list[0].second_moment_area)
-print(beam.beam_list[0].centroidal_axis)
-print(beam.beam_list[0].q_from_glue_top)
-
-
-beam.draw_internal_properties()
-
-# truss.draw_truss(True)
-# truss.draw_internal_forces()
-
+bridge.beam.draw_internal_properties()
+bridge.truss.draw_internal_forces()
 plt.show()
+
+bridge.truss.draw_truss(True)
