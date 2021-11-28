@@ -124,7 +124,10 @@ class TrussNode():
                     self.internal_forces[unknown_internal_forces[0]].set_mag(-f_x_net - self.internal_forces[unknown_internal_forces[1]].get_mag() * (f_b.get_x_mag()/f_b.get_mag()))
             else:
                 self.internal_forces[unknown_internal_forces[1]].set_mag((f_b.get_mag() * (f_y_net/f_a.get_y_mag() - f_x_net/f_a.get_x_mag())) / (f_b.get_x_mag()/f_a.get_x_mag() - f_b.get_y_mag()/f_a.get_y_mag()))
-                self.internal_forces[unknown_internal_forces[0]].set_mag((f_a.get_mag()/f_a.get_x_mag()) * (-f_x_net - self.internal_forces[unknown_internal_forces[1]].get_mag() * (f_b.get_x_mag()/f_b.get_mag())))
+                if self.internal_forces[unknown_internal_forces[1]].get_mag() == 0:
+                    self.internal_forces[unknown_internal_forces[0]].set_mag_by_comp(-f_x_net, -f_y_net)
+                else:
+                    self.internal_forces[unknown_internal_forces[0]].set_mag((f_a.get_mag()/f_a.get_x_mag()) * (-f_x_net - self.internal_forces[unknown_internal_forces[1]].get_mag() * (f_b.get_x_mag()/f_b.get_mag())))
         
         elif len(unknown_internal_forces) == 1:
             self.internal_forces[unknown_internal_forces[0]].set_mag_by_comp(-f_x_net, -f_y_net)
@@ -134,7 +137,7 @@ class TrussNode():
                 print(self.internal_forces[thing].get_mag())
 
 class Truss():
-    def __init__(self, flattop, young_mod, poisson, tension_ult, comp_ult, cs_properties, a_rxn_loc=None, b_rxn_loc=None):
+    def __init__(self, flattop, young_mod, poisson, tension_ult, comp_ult, glue_shear_ult, cs_properties, modified_cs_members=None, a_rxn_loc=None, b_rxn_loc=None):
         '''
         flattop: Flattop (bool)
         cs_properties: Cross-Sectional Properties
@@ -150,10 +153,13 @@ class Truss():
 
         self.tension_ult = tension_ult
         self.comp_ult = comp_ult
+        self.glue_shear_ult = glue_shear_ult
 
-        self.cs_properties = cs_properties        
+        self.cs_properties = cs_properties
         self.width = cs_properties["width"]
         self.thickness = cs_properties["thickness"]
+        self.tab_length = cs_properties["tab_length"]
+        self.modified_cs_members = modified_cs_members
 
         self.young_mod = young_mod
         self.poisson = poisson
@@ -169,9 +175,11 @@ class Truss():
         self.a_rxn_loc = a_rxn_loc
         self.b_rxn_loc = b_rxn_loc
 
-    def gen_periodic_warren_truss(self, triangle_count, diagonal):
+    def gen_periodic_warren_truss(self, triangle_count, diagonal, flipped=False):
         self.truss_list = []
-        self.truss_list.append(TrussNode())
+        self.truss_list.append(TrussNode((0, 0) if not flipped else (0, diagonal[1])))
+
+        diagonal = diagonal if not flipped else (diagonal[0], -diagonal[1])
 
         for i in range(triangle_count):
             self.truss_list.append(self.truss_list[-1].new_neighbour_rel(diagonal))
@@ -190,9 +198,11 @@ class Truss():
             self.truss_list[-2].add_neighbour(self.truss_list[-4])
             self.truss_list[-1].add_neighbour(self.truss_list[1])
     
-    def gen_nonperiodic_warren_truss(self, relative_base_xs, height):
+    def gen_nonperiodic_warren_truss(self, relative_base_xs, height, flipped=False):
         self.truss_list = []
-        self.truss_list.append(TrussNode())
+        self.truss_list.append(TrussNode((0, 0) if not flipped else (0, height)))
+
+        height = height if not flipped else -height
 
         for x in relative_base_xs:
             self.truss_list.append(self.truss_list[-1].new_neighbour_rel((x/2, height)))
@@ -311,7 +321,7 @@ class Truss():
     def calc_displacement_at_node(self, point_loc, force_direction):
         self.calc_deformed_lengths()
 
-        virtual_truss = Truss(self.flattop, self.young_mod, self.poisson, self.tension_ult, self.comp_ult, truss_cs_properties)
+        virtual_truss = Truss(self.flattop, self.young_mod, self.poisson, self.tension_ult, self.comp_ult, self.glue_shear_ult, self.cs_properties, self.modified_cs_members)
 
         for node in self.truss_list:
             virtual_truss.truss_list.append(TrussNode((node.loc[0], node.loc[1])))
@@ -334,15 +344,29 @@ class Truss():
         
         return work / 1000
 
-    def force_tension_failure_member(self):
-        return self.tension_ult * self.width * self.thickness
+    def force_tension_failure_member(self, key):
+        width = self.width if key not in self.modified_cs_members else self.modified_cs_members[key]["width"]
+        thickness = self.thickness if key not in self.modified_cs_members else self.modified_cs_members[key]["thickness"]
+
+        return self.tension_ult * width * thickness
     
-    def force_compression_failure_member(self):
-        return -self.comp_ult * self.width * self.thickness
+    def force_compression_failure_member(self, key):
+        width = self.width if key not in self.modified_cs_members else self.modified_cs_members[key]["width"]
+        thickness = self.thickness if key not in self.modified_cs_members else self.modified_cs_members[key]["thickness"]
+
+        return -self.comp_ult * width * thickness
     
-    def force_buckling_member(self):
-        stress_crit = (4*math.pi**2*self.young_mod) / (12*(1-self.poisson**2))*(self.thickness/self.width)**2
-        failure_force = -stress_crit * self.width * self.thickness
+    def force_buckling_member(self, key):
+        width = self.width if key not in self.modified_cs_members else self.modified_cs_members[key]["width"]
+        thickness = self.thickness if key not in self.modified_cs_members else self.modified_cs_members[key]["thickness"]
+
+        stress_crit = (4*math.pi**2*self.young_mod) / (12*(1-self.poisson**2))*(thickness/width)**2
+        failure_force = -stress_crit * width * thickness
+
+        return failure_force
+    
+    def force_shear_failure_glue_tab(self):
+        failure_force = self.glue_shear_ult * (self.width * self.tab_length**3 / 12) * self.width / (self.tab_length * self.width * self.tab_length / 4)
 
         return failure_force
     
@@ -350,26 +374,30 @@ class Truss():
         self.failures["force_tension_failure_member"] = {}
         self.failures["force_compression_failure_member"] = {}
         self.failures["force_buckling_member"] = {}
+        self.failures["force_shear_failure_glue_tab"] = {}
 
         for key in self.internal_forces:
-            self.failures["force_tension_failure_member"][key] = self.force_tension_failure_member()
-            self.failures["force_compression_failure_member"][key] = self.force_compression_failure_member()
-            self.failures["force_buckling_member"][key] = self.force_buckling_member()
+            self.failures["force_tension_failure_member"][key] = self.force_tension_failure_member(key)
+            self.failures["force_compression_failure_member"][key] = self.force_compression_failure_member(key)
+            self.failures["force_buckling_member"][key] = self.force_buckling_member(key)
+
+        for i in range(len(self.truss_list)):            
+            self.failures["force_shear_failure_glue_tab"][i] = self.force_shear_failure_glue_tab()
     
     def draw_internal_forces(self):
         self.update_failures()
 
-        x_values = []
+        member_x_values = []
 
         for i in range(len(self.internal_forces)):
-            x_values.append(i)
+            member_x_values.append(i)
 
         force_tension_failure_list = []
         force_compression_failure_list = []
         force_buckling_member_list = []
         internal_forces_list = []
 
-        labels = []
+        member_labels = []
 
         for key in self.internal_forces:
             force_tension_failure_list.append(self.failures["force_tension_failure_member"][key])
@@ -377,17 +405,46 @@ class Truss():
             force_buckling_member_list.append(self.failures["force_buckling_member"][key])
             internal_forces_list.append(self.internal_forces[key])
 
-            labels.append(key)
+            member_labels.append(key)
         
         plt.figure()
-        plt.bar(x_values, force_tension_failure_list, color="tab:blue", zorder=1)
-        plt.bar(x_values, force_compression_failure_list, color="tab:red", zorder=2)
-        plt.bar(x_values, force_buckling_member_list, color="tab:orange", zorder=3)
-        plt.bar(x_values, self.internal_forces.values(), color="tab:green", zorder=4)
+        plt.bar(member_x_values, force_tension_failure_list, color="tab:blue", zorder=1)
+        plt.bar(member_x_values, force_compression_failure_list, color="tab:red", zorder=2)
+        plt.bar(member_x_values, force_buckling_member_list, color="tab:orange", zorder=3)
+        plt.bar(member_x_values, internal_forces_list, color="tab:green", zorder=4)
 
         plt.xticks(rotation=90)
-        plt.gca().set_xticks(x_values)
-        plt.gca().set_xticklabels(labels)
+        plt.gca().set_xticks(member_x_values)
+        plt.gca().set_xticklabels(member_labels)
+
+        node_x_values = []
+
+        force_shear_failure_glue_tab_list = []
+        node_forces_list = []
+
+        node_labels = []
+
+        for i in range(len(self.truss_list)):
+            node_x_values.append(i)
+
+            f_x_net = 0
+             
+            for neighbour in self.truss_list[i].internal_forces:
+                if neighbour.loc[0] - self.truss_list[i].loc[0] < 0:
+                    f_x_net += self.truss_list[i].internal_forces[neighbour].get_x_mag()
+
+            node_forces_list.append(abs(f_x_net))
+            force_shear_failure_glue_tab_list.append(self.failures["force_shear_failure_glue_tab"][i])
+
+            node_labels.append(i)
+        
+        plt.figure()
+        plt.bar(node_x_values, force_shear_failure_glue_tab_list, color="tab:red", zorder=1)
+        plt.bar(node_x_values, node_forces_list, color="tab:green", zorder=2)
+
+        plt.xticks(rotation=90)
+        plt.gca().set_xticks(node_x_values)
+        plt.gca().set_xticklabels(node_labels)
         
     def draw_truss(self, colour=False):
         max_mag = 0
@@ -846,17 +903,17 @@ class Beam():
         plt.title("Curvature")
 
 class Bridge():
-    def __init__(self, truss_flattop, young_mod, poisson, tension_ult, comp_ult, shear_ult, glue_shear_ult, truss_cs_properties, beam_segments, beam_diaphragms, resolution=1000):
-        self.truss = Truss(truss_flattop, young_mod, poisson, tension_ult, comp_ult, truss_cs_properties)
+    def __init__(self, truss_flattop, young_mod, poisson, tension_ult, comp_ult, shear_ult, glue_shear_ult, truss_cs_properties, truss_modified_cs_members, beam_segments, beam_diaphragms, resolution=1000):
+        self.truss = Truss(truss_flattop, young_mod, poisson, tension_ult, comp_ult, glue_shear_ult, truss_cs_properties, truss_modified_cs_members)
         self.beam = Beam(young_mod, poisson, tension_ult, comp_ult, shear_ult, glue_shear_ult, beam_segments, beam_diaphragms, resolution)
     
-    def gen_bridge_periodic_truss(self, triangle_count, diagonal):
+    def gen_bridge_periodic_truss(self, triangle_count, diagonal, flipped=False):
         self.beam.gen_beam()
-        self.truss.gen_periodic_warren_truss(triangle_count, diagonal)
+        self.truss.gen_periodic_warren_truss(triangle_count, diagonal, flipped)
 
-    def gen_bridge_nonperiodic_truss(self, relative_base_xs, height):
+    def gen_bridge_nonperiodic_truss(self, relative_base_xs, height,  flipped=False):
         self.beam.gen_beam()
-        self.truss.gen_nonperiodic_warren_truss(relative_base_xs, height)
+        self.truss.gen_nonperiodic_warren_truss(relative_base_xs, height, flipped)
 
     def set_rxn_locs(self, a_rxn_loc, b_rxn_loc):
         self.truss.set_rxn_locs(a_rxn_loc, b_rxn_loc)
@@ -876,21 +933,23 @@ class Bridge():
         self.beam.add_load(loc, Vector(load.x_dir, load.y_dir, load.get_mag() * 0.5))
 
 '''--edit--'''
-bridge_height = 140
+bridge_height = 110
 
-truss_cs_properties =  {"width": 80, "thickness": 1.27}
+truss_cs_properties =  {"width": 80, "thickness": 1.27, "tab_length": 10}
+truss_modified_cs_members = {(5,7): {"width": 80, "thickness": 2.54}}
 
 beam_segments =    [((0,1280),      {"top_thickness": 1.27,
                                     "top_width": 100,
                                     "web_thickness": 1.27,
-                                    "web_height": 140-1.27*2,
+                                    "web_height": 110-1.27*2,
                                     "web_spacing": 75-1.27*2,
                                     "tab_width": 10,
                                     "bottom_thickness": 1.27,
                                     "bottom_width": 75})
                     ]
 
-truss_relative_base_xs = [30, 245, 245, 90, 210, 210, 90, 130, 30]
+truss_relative_base_xs = [30,235,235,130,195,195,110,120,30]
+#truss_relative_base_xs = [30,240,240,110,200,200,110,120,30]
 
 '''--do not edit--'''
 beam_diaphragms = []
@@ -901,19 +960,19 @@ for i in truss_relative_base_xs:
     beam_diaphragms.append(x + 3*i/4)
     x += i
 
-bridge = Bridge(True, 4000, 0.2, 30, 6, 4, 2, truss_cs_properties, beam_segments, beam_diaphragms, 1000)
-bridge.gen_bridge_nonperiodic_truss(truss_relative_base_xs, bridge_height)
+bridge = Bridge(True, 4000, 0.2, 30, 6, 4, 2, truss_cs_properties, truss_modified_cs_members, beam_segments, beam_diaphragms, 1000)
+bridge.gen_bridge_nonperiodic_truss(truss_relative_base_xs, bridge_height, False)
 
 bridge.set_rxn_locs((15,0), (1075,0))
-bridge.add_load((565,0), Vector(0,-1,1000))
-bridge.add_load((1265,0), Vector(0,-1,1000))
+bridge.add_load((565,bridge_height), Vector(0,-1,1000))
+bridge.add_load((1265,bridge_height), Vector(0,-1,1000))
 
 bridge.update_bridge()
 
 bridge.beam.draw_internal_properties()
 bridge.truss.draw_internal_forces()
 
-print(bridge.truss.calc_displacement_at_node((640), Vector(0, -1, 1)))
+print(bridge.truss.calc_displacement_at_node((640, 0), Vector(0, -1, 1)))
 
 plt.show()
 
