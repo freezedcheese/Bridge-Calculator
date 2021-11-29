@@ -85,3 +85,22 @@ beam_segments =    [((0,1280),      {"top_thickness": 1.27,
                     ]
 
 truss_relative_base_xs = [30,235,235,130,195,195,110,120,30]
+
+'''design 25'''
+bridge_height = 105
+
+truss_cs_properties =  {"width": 80, "thickness": 1.27, "tab_length": 10}
+truss_modified_cs_members = {(5,7): {"width": 75, "thickness": 2.54}, (17,18): {"width": 75, "thickness": 2.54}, (7,9): {"width": 75, "thickness": 2.54}, (12,14): {"width": 75, "thickness": 2.54}, (9,10): {"width": 75, "thickness": 2.54}}
+truss_modified_tab_length_nodes = {4: 15, 5: 20, 6:20, 7: 25, 8: 20, 11: 15, 12: 20, 13: 20, 14: 20, 15: 25, 16: 25, 17: 25}
+
+beam_segments =    [((0,1280),     {"top_thickness": 1.27,
+                                    "top_width": 100,
+                                    "web_thickness": 1.27,
+                                    "web_height": 100-1.27*2,
+                                    "web_spacing": 75-1.27*2,
+                                    "tab_width": 10,
+                                    "bottom_thickness": 1.27,
+                                    "bottom_width": 75})
+                    ]
+
+truss_relative_base_xs = [40,232.5,232.5,130,195,195,110,115,40]
