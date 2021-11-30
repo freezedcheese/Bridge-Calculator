@@ -4,36 +4,75 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 def find_hyp(x, y):
+    '''
+    Helper function to find hypoteneuse between points
+    '''
+
     return math.sqrt(x**2 + y**2)
 
 class Vector():
     def __init__(self, x_dir, y_dir, mag=1):
+        '''
+        Vector helper class to simplify repeated vector calculations
+        Directions are set using x and y components, which are NOT related to the vector's magnitude
+        The vector's magnitude is stored separately
+        This system simplifies some calculations
+
+        x_dir: x component of direction vector
+        y_dir: y component of direction vector
+        mag: Magnitude of vector
+        '''
+
         self.x_dir = x_dir
         self.y_dir = y_dir
         self.mag = mag
 
     def get_opposite(self):
+        '''
+        Return vector with opposite direction and equal magnitude
+        '''
+        
         return Vector(-self.x_dir, -self.y_dir, self.mag)
     
     def get_mag(self):
+        '''
+        Return vector magnitude
+        '''
+
         return self.mag
     
     def get_x_mag(self):
+        '''
+        Return vector x magnitude
+        '''
+
         if find_hyp(self.x_dir, self.y_dir) == 0:
             return 0
         else:
             return self.mag * (self.x_dir / find_hyp(self.x_dir, self.y_dir))
     
     def get_y_mag(self):
+        '''
+        Return y vector magnitude
+        '''
+
         if find_hyp(self.x_dir, self.y_dir) == 0:
             return 0
         else:
             return self.mag * (self.y_dir / find_hyp(self.x_dir, self.y_dir))
     
     def set_mag(self, mag):
+        '''
+        Set vector magnitude
+        '''
+
         self.mag = mag
     
     def set_mag_by_comp(self, x_mag_comp, y_mag_comp):
+        '''
+        Set vector magnitude by setting magnitude components, while maintaining direction vector
+        '''
+
         if self.x_dir != 0:
             self.mag = x_mag_comp * (find_hyp(self.x_dir, self.y_dir) / self.x_dir)
         elif self.y_dir != 0:
@@ -42,13 +81,26 @@ class Vector():
             self.mag = 0
     
     def set_mag_by_current_dir_comps(self):
+        '''
+        Set vector magnitude to magnitude of current direction vector
+        '''
+
         self.mag = find_hyp(self.x_dir, self.y_dir)
     
     def set_dir_comps_by_current_mag(self):
+        '''
+        Set direction vector component magnitudes to current component magnitudes
+        '''
+
         self.x_dir = self.get_x_mag()
         self.y_dir = self.get_y_mag()
     
     def add_vector(self, vector):
+        '''
+        Add another vector to this one by adding magnitude components
+        This also modifies the current direction vector - the resulting direction vector has a magnitude equal to that of the resulting vector
+        '''
+
         self.set_dir_comps_by_current_mag()
         vector.set_dir_comps_by_current_mag()
 
@@ -60,12 +112,24 @@ class Vector():
 
 class TrussNode():
     def __init__(self, loc=(0,0)):
+        '''
+        TrussNode class (each node represents a connection point between multiple members)
+        Used as members of a truss shaped data structure in the Truss class
+        Used by the Truss class to calculate internal forces
+
+        loc: (x,y) coordinates of node [tuple]
+        '''
+
         self.loc = loc
         self.neighbours = set()
         self.external_forces = []
         self.internal_forces = {}
 
     def new_neighbour_rel(self, rel):
+        '''
+        Create new neighbouring node positioned relative to this node, linked as a neighbour to this node
+        '''
+
         neighbour_loc = (self.loc[0] + rel[0], self.loc[1] + rel[1])
         neighbour = TrussNode(neighbour_loc)
         self.neighbours.add(neighbour)
@@ -74,16 +138,36 @@ class TrussNode():
         return neighbour
     
     def add_neighbour(self, neighbour):
+        '''
+        Add preexisting node as a neighbour to this node
+        
+        neighbour: Neighbour node reference [TrussNode]
+        '''
+
         self.neighbours.add(neighbour)
         neighbour.neighbours.add(self)
     
     def add_external_force(self, force):
+        '''
+        Add truss external force vector
+        '''
+
         self.external_forces.append(force)
     
     def calc_rel_pos(self, neighbour):
+        '''
+        Calculate relative position between this node and another
+
+        neighbour: Neighbour node reference [TrussNode]
+        '''
+
         return Vector(neighbour.loc[0] - self.loc[0], neighbour.loc[1] - self.loc[1])
 
     def calc_internal_forces(self, debug_print=False):
+        '''
+        Calculate truss internal forces required between this node and all neighbouring nodes to satisfy equilibrium
+        '''
+
         unknown_internal_forces = []
 
         f_x_net, f_y_net = 0, 0
@@ -139,14 +223,27 @@ class TrussNode():
 class Truss():
     def __init__(self, flattop, young_mod, poisson, tension_ult, comp_ult, glue_shear_ult, cs_properties, modified_cs_members=None, modified_tab_length_nodes=None, a_rxn_loc=None, b_rxn_loc=None):
         '''
-        flattop: Flattop (bool)
-        cs_properties: Cross-Sectional Properties
-        
-        young_mod: Young's Modulus (MPa)
-        poisson: Poisson's Ratio
+        Truss data structure consisting of TrussNodes
+        Contains TrussNode elements representing truss joints
+        Can solve for all internal forces within any shape of truss using method of joints - including the bat shape from Friday afternoon's quiz 8! :)
+        This is extremely useful when solving asymmetrical, nonperiodic trusses (like the final design we settled on)
 
-        a_rxn_loc: Pivot reaction point A_x, A_y
-        b_rxn_loc: Roller reaction point B_y
+        flattop: True if bridge has a flat top (and bottom) [bool]
+
+        young_mod: Young's modulus (MPa) [float]
+        poisson: Poisson's ratio [float]
+
+        tension_ult: Tensile strength (MPa) [float]
+        comp_ult: Compressive strength (MPa) [float]
+        glue_shear_ult: Glue shear strength (MPa) [float]
+
+        cs_properties: Cross-sectional properties [dict]
+
+        modified_cs_members: Modified cross sectional properties [dict]
+        modifies_tab_length_nodes: Modified glue tab lengths [dict]
+
+        a_rxn_loc: (x,y) pivot reaction point A_x, A_y [tuple]
+        b_rxn_loc: (x,y) roller reaction point B_y [tuple]
         '''
 
         self.flattop = flattop
@@ -158,6 +255,7 @@ class Truss():
         self.cs_properties = cs_properties
         self.width = cs_properties["width"]
         self.thickness = cs_properties["thickness"]
+        self.tab_width = cs_properties["tab_width"]
         self.tab_length = cs_properties["tab_length"]
 
         self.modified_cs_members = modified_cs_members
@@ -175,11 +273,20 @@ class Truss():
         self.deformed_lengths = {}
 
         self.failures = {}
+        self.min_FOS = {}
 
         self.a_rxn_loc = a_rxn_loc
         self.b_rxn_loc = b_rxn_loc
 
     def gen_periodic_warren_truss(self, triangle_count, diagonal, flipped=False):
+        '''
+        Generate Truss data structure consisting of TrussNodes that represent a periodic and symmetrical Warren truss
+
+        triangle_count: Number of triangles in Warren truss [int]
+        diagonal: (x, y) distance between first 2 nodes [tuple]
+        flipped: True if bridge is upside-down [bool]
+        '''
+
         self.truss_list = []
         self.truss_list.append(TrussNode((0, 0) if not flipped else (0, diagonal[1])))
 
@@ -203,6 +310,14 @@ class Truss():
             self.truss_list[-1].add_neighbour(self.truss_list[1])
     
     def gen_nonperiodic_warren_truss(self, relative_base_xs, height, flipped=False):
+        '''
+        Generate Truss data structure consisting of TrussNodes that represent a nonperiodic and asymmetrical Warren truss
+
+        relative_base_xs: Relative x distances between the nodes at the base of the truss [list]
+        height: height of bridge [float]
+        flipped: True if bridge is upside-down [bool]
+        '''
+
         self.truss_list = []
         self.truss_list.append(TrussNode((0, 0) if not flipped else (0, height)))
 
@@ -226,6 +341,10 @@ class Truss():
             self.truss_list[-1].add_neighbour(self.truss_list[1])
 
     def update_lengths(self):
+        '''
+        Update lengths of Truss members
+        '''
+
         for node in self.truss_list:
             for neighbour in node.neighbours:
                 key = tuple(sorted([self.truss_list.index(node), self.truss_list.index(neighbour)]))
@@ -234,6 +353,15 @@ class Truss():
                 
 
     def update_internal_forces(self):
+        '''
+        Update internal member forces in Truss
+        Makes calls to each TrussNode to calculate the internal forces at each joint, then consolidates them
+
+        Forces:
+        - Internal Member Forces
+        - Joint Shear Forces
+        '''
+
         if self.flattop:
             self.truss_list[-1].calc_internal_forces()
             self.truss_list[-2].calc_internal_forces()
@@ -261,11 +389,22 @@ class Truss():
             self.node_forces.append(abs(f_x_net))
 
     def calc_deformed_lengths(self):
+        '''
+        Calculate deformed lengths of Truss members
+        '''
+
         self.update_lengths()
         for key in self.internal_forces:
             self.deformed_lengths[key] = ((self.internal_forces[key] / (self.width * self.thickness)) / self.young_mod) * self.lengths[key]
     
     def add_load(self, loc, load):
+        '''
+        Add external load to Truss
+
+        loc: (x,y) location of force [tuple]
+        load: Load force [Vector]
+        '''
+
         key = None
 
         for node in self.truss_list:
@@ -303,14 +442,20 @@ class Truss():
     
     def set_rxn_locs(self, a_rxn_loc, b_rxn_loc):
         '''
-        a_rxn_loc: Pivot reaction point A_x, A_y
-        b_rxn_loc: Roller reaction point B_y
+        Set locations of reaction forces on Truss
+
+        a_rxn_loc: (x,y) pivot reaction point A_x, A_y [tuple]
+        b_rxn_loc: (x,y) roller reaction point B_y [tuple]
         '''
 
         self.a_rxn_loc = a_rxn_loc
         self.b_rxn_loc = b_rxn_loc
 
     def update_rxn_forces(self):
+        '''
+        Update reaction forces on Truss based on current acting external loads
+        '''
+
         f_x_net = 0
         f_y_net = 0
         m_a_net = 0
@@ -332,7 +477,14 @@ class Truss():
         self.add_load(self.a_rxn_loc, a_rxn)
         self.add_load(self.b_rxn_loc, b_rxn)
 
-    def calc_displacement_at_node(self, point_loc, force_direction):
+    def calc_displacement(self, point_loc, force_direction):
+        '''
+        Calculate displacement at point of interest using method of virtual work
+
+        point_loc: (x,y) point of interest [tuple]
+        force_direction: Displacement direction vector [Vector]
+        '''
+
         self.calc_deformed_lengths()
 
         virtual_truss = Truss(self.flattop, self.young_mod, self.poisson, self.tension_ult, self.comp_ult, self.glue_shear_ult, self.cs_properties)
@@ -359,18 +511,36 @@ class Truss():
         return work / 1000
 
     def force_tension_failure_member(self, key):
+        '''
+        Calculate tensile force required to cause tensile failure of member with id "key"
+
+        key: Member key of form (node_a_index, node_b_index) [tuple]
+        '''
+
         width = self.width if key not in self.modified_cs_members else self.modified_cs_members[key]["width"]
         thickness = self.thickness if key not in self.modified_cs_members else self.modified_cs_members[key]["thickness"]
 
         return self.tension_ult * width * thickness
     
     def force_compression_failure_member(self, key):
+        '''
+        Calculate compressive force required to cause compressive yielding failure of member with id "key"
+
+        key: Member key of form (node_a_index, node_b_index) [tuple]
+        '''
+
         width = self.width if key not in self.modified_cs_members else self.modified_cs_members[key]["width"]
         thickness = self.thickness if key not in self.modified_cs_members else self.modified_cs_members[key]["thickness"]
 
         return -self.comp_ult * width * thickness
     
     def force_buckling_member(self, key):
+        '''
+        Calculate compressive force required to cause global buckling of member with id "key"
+
+        key: Member key of form (node_a_index, node_b_index) [tuple]
+        '''
+
         width = self.width if key not in self.modified_cs_members else self.modified_cs_members[key]["width"]
         thickness = self.thickness if key not in self.modified_cs_members else self.modified_cs_members[key]["thickness"]
 
@@ -380,13 +550,33 @@ class Truss():
         return failure_force
     
     def force_shear_failure_glue_tab(self, i):
+        '''
+        Calculate shear force required to cause shear failure at joint (node) with id "i" 
+
+        i: Node id [int]
+        '''
+
         tab_length = self.tab_length if i not in self.modified_tab_length_nodes else self.modified_tab_length_nodes[i]
 
-        failure_force = self.glue_shear_ult * (self.width * tab_length**3 / 12) * self.width / (tab_length * self.width * tab_length / 4)
+        failure_force = self.glue_shear_ult * (self.tab_width * tab_length**3 / 12) * self.tab_width / (tab_length * self.tab_width * tab_length / 4)
 
         return failure_force
     
     def update_failures(self):
+        '''
+        Update forces required to cause failure by each failure mode for every single truss joint and member
+
+        Forces:
+        - Internal Member Forces
+        - Joint Shear Forces
+
+        Failure modes:
+        - Truss Member Tensile Yield Failure
+        - Truss Member Compressive Yield Failure
+        - Truss Member Local Buckling Failure
+        - Truss Joint Glue Tab Shear Failure
+        '''
+
         self.failures["force_tension_failure_member"] = {}
         self.failures["force_compression_failure_member"] = {}
         self.failures["force_buckling_member"] = {}
@@ -400,7 +590,59 @@ class Truss():
         for i in range(len(self.truss_list)):            
             self.failures["force_shear_failure_glue_tab"][i] = self.force_shear_failure_glue_tab(i)
     
+    def update_min_FOS(self):
+        '''
+        Update FOS for each failure mode by iterating through the forces in every joint and member and finding the joints and members with the lowest FOS in each mode
+
+        Forces:
+        - Internal Member Forces
+        - Joint Shear Forces
+
+        Failure modes:
+        - Truss Member Tensile Yield Failure
+        - Truss Member Compressive Yield Failure
+        - Truss Member Local Buckling Failure
+        - Truss Joint Glue Tab Shear Failure
+        '''
+
+        member_modes = ["force_tension_failure_member", "force_compression_failure_member", "force_buckling_member"]
+
+        for mode in member_modes:
+            self.min_FOS[mode] = None
+            for key in self.internal_forces:
+                if self.internal_forces[key] != 0:
+                    if self.failures[mode][key] / self.internal_forces[key] > 0:
+                        if self.min_FOS[mode] == None:
+                            self.min_FOS[mode] = self.failures[mode][key] / self.internal_forces[key]
+                        else:
+                            self.min_FOS[mode] = min(self.failures[mode][key] / self.internal_forces[key], self.min_FOS[mode])
+            
+        node_mode = "force_shear_failure_glue_tab"
+
+        self.min_FOS[node_mode] = None
+        for i in range(len(self.node_forces)):
+            if self.node_forces[i] != 0:
+                    if self.failures[node_mode][i] / self.node_forces[i] > 0:
+                        if self.min_FOS[node_mode] == None:
+                            self.min_FOS[node_mode] = self.failures[node_mode][i] / self.node_forces[i]
+                        else:
+                            self.min_FOS[node_mode] = min(self.failures[node_mode][i] / self.node_forces[i], self.min_FOS[node_mode])
+
     def draw_internal_forces(self):
+        '''
+        Plot all joint and member internal forces along with corresponding FOS for each failure mode
+
+        Forces:
+        - Internal Member Forces
+        - Joint Shear Forces
+
+        Failure modes:
+        - Truss Member Tensile Yield Failure
+        - Truss Member Compressive Yield Failure
+        - Truss Member Local Buckling Failure
+        - Truss Joint Glue Tab Shear Failure
+        '''
+
         self.update_failures()
 
         member_x_values = []
@@ -459,10 +701,14 @@ class Truss():
         plt.gca().set_xticks(node_x_values)
         plt.gca().set_xticklabels(node_labels)
         
-    def draw_truss(self, colour=False):
+    def draw_truss(self):
+        '''
+        Draw image of truss using locations and neighbour connections of each TrussNode
+        '''
+
         max_mag = 0
         for key in self.internal_forces:
-            max_mag = abs(self.internal_forces[key]) if abs(self.internal_forces[key]) > max_mag else max_mag
+            max_mag = max(abs(self.internal_forces[key]), max_mag)
         
         SCALE = 0.5
         COLOUR_MULT = 255 / max_mag
@@ -472,20 +718,19 @@ class Truss():
         
         max_x = 0
         for node in self.truss_list:
-            max_x = node.loc[0] if node.loc[0] > max_x else max_x
+            max_x = max(node.loc[0], max_x)
         
         x_offset = max_x * SCALE / 2
 
         for node in self.truss_list:
             for neighbour in node.neighbours:
                 turtle.penup()
-                if colour:
-                    if node.calc_rel_pos(neighbour).get_x_mag() != 0:
-                        RED_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_x_mag() / node.calc_rel_pos(neighbour).get_x_mag() < 0 else 0
-                        BLUE_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_x_mag() / node.calc_rel_pos(neighbour).get_x_mag() > 0 else 0
-                    else:
-                        RED_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_y_mag() / node.calc_rel_pos(neighbour).get_y_mag() < 0 else 0
-                        BLUE_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_y_mag() / node.calc_rel_pos(neighbour).get_y_mag() > 0 else 0
+                if node.calc_rel_pos(neighbour).get_x_mag() != 0:
+                    RED_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_x_mag() / node.calc_rel_pos(neighbour).get_x_mag() < 0 else 0
+                    BLUE_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_x_mag() / node.calc_rel_pos(neighbour).get_x_mag() > 0 else 0
+                else:
+                    RED_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_y_mag() / node.calc_rel_pos(neighbour).get_y_mag() < 0 else 0
+                    BLUE_MULT = COLOUR_MULT if node.internal_forces[neighbour].get_y_mag() / node.calc_rel_pos(neighbour).get_y_mag() > 0 else 0
                     turtle.pencolor(int(abs(node.internal_forces[neighbour].get_mag()) * RED_MULT), 0, int(abs(node.internal_forces[neighbour].get_mag()) * BLUE_MULT))
                 turtle.goto((node.loc[0] * SCALE - x_offset, node.loc[1] * SCALE))
                 turtle.pendown()
@@ -497,6 +742,25 @@ class Truss():
 
 class BeamSlice():
     def __init__(self, dx, last_slice, young_mod, poisson, tension_ult, comp_ult, shear_ult, glue_shear_ult, cs_properties):
+        '''
+        BeamSlice class (each slice represents a small, discrete segment of the beam)
+        Used as members of the Beam class
+        Used to calculate changing beam properties along the length of the beam
+
+        dx: Relative x spacing between this slice and the previous one [float]
+        last_slice: Previous slice reference (used to propagate data through the beam) [BeamSlice]
+
+        young_mod: Young's modulus (MPa) [float]
+        poisson: Poisson's ratio [float]
+
+        tension_ult: Tensile strength (MPa) [float]
+        comp_ult: Compressive strength (MPa) [float]
+        shear_ult: Shear strength (MPa) [float]
+        glue_shear_ult: Glue shear strength (MPa) [float]
+
+        cs_properties: Cross-sectional properties [dict]
+        '''
+
         self.dx = dx
 
         self.young_mod = young_mod
@@ -537,26 +801,56 @@ class BeamSlice():
 
         self.last_slice = last_slice
 
-        if self.last_slice != None:
-            self.propagate_neighbour_properties()
+        self.propagate_last_slice_properties()
     
-    def propagate_neighbour_properties(self):
+    def propagate_last_slice_properties(self):
+        '''
+        Propagate properties from last slice to this slice
+        This allows data to propagate through the beam, from slice to slice
+        '''
+
         if self.last_slice != None:
             self.shear_force = self.last_slice.shear_force
             self.b_moment = self.last_slice.b_moment
             self.curvature = self.last_slice.curvature
         else:
+            self.x = 0
             self.shear_force = 0
             self.b_moment = 0
             self.curvature = 0
     
     def set_external_force(self, force):
+        '''
+        Set external load on this slice
+
+        force: Load force [Vector]
+        '''
+
         self.external_force = force
 
     def add_external_force(self, force):
+        '''
+        Add external load to the existing load on this slice
+
+        force: Load force [Vector]
+        '''
+
         self.external_force.add_vector(force)
     
-    def calc_centroidal_axis_and_second_moment_of_area(self):
+    def update_centroidal_axis_and_second_moment_of_area(self):
+        '''
+        Update the height of the centroidal axis and the second moment of area for this slice
+        This is calculated for each slice to account for varying cross sections across the beam
+
+        Assumes the following general cross sectional shape - the size of each component can be set by changing the slice's cs_properties
+        
+        --------------  <-- top plate
+          |-      -|<-- glue tab
+          |        |    <-- web
+          |-      -|
+          ----------    <-- bottom plate
+        '''
+
         A1 = self.web_thickness*self.web_height
         y1 = self.web_height/2 + self.bottom_thickness
         A2 = self.web_thickness*self.tab_width
@@ -599,8 +893,17 @@ class BeamSlice():
 
         self.second_moment_area = I1 + I2 + I3 + I4 + I5 + I6 + I7 + I8 + A1*(self.centroidal_axis-y1)**2 + A2*(self.centroidal_axis-y2)**2 + A3*(self.centroidal_axis-y3)**2 + A4*(self.centroidal_axis-y4)**2 + A5*(self.centroidal_axis-y5)**2 + A6*(self.centroidal_axis-y6)**2 + + A7*(self.centroidal_axis-y7)**2 + + A8*(self.centroidal_axis-y8)**2
 
-    def calc_Qs(self):
-        self.calc_centroidal_axis_and_second_moment_of_area()
+    def update_Qs(self):
+        '''
+        Update first moment of area from locations of interest to top/bottom of beam slice
+        
+        Locations of interest:
+        - Height of centroidal axis
+        - Height of top glue tab connection
+        - Height of bottom glue tab connection
+        '''
+
+        self.update_centroidal_axis_and_second_moment_of_area()
         A1 = self.top_width*self.top_thickness
         d1 = self.bottom_thickness + self.web_height + self.top_thickness/2 - self.centroidal_axis
         A2 = (self.bottom_thickness + self.web_height - self.centroidal_axis)*self.web_thickness
@@ -622,9 +925,23 @@ class BeamSlice():
         self.q_from_glue_bot = A4*d4
     
     def update_internal_properties(self):
-        self.propagate_neighbour_properties()
-        self.calc_centroidal_axis_and_second_moment_of_area()
+        '''
+        Update internal properties of this beam slice
 
+        Properties:
+        - Shear Force
+        - Bending Moment
+        - Curvature
+        - Flexural Stress at Top
+        - Flexural Stress at Bottom
+        - Shear Stress at Centroidal Axis
+        - Shear Stress at Top Glue Joint
+        - Shear Stress at Bottom Glue Joint
+        '''
+
+        self.propagate_last_slice_properties()
+        self.update_centroidal_axis_and_second_moment_of_area()
+        
         self.external_force.set_dir_comps_by_current_mag()
         self.shear_force += self.external_force.get_y_mag()
         
@@ -634,13 +951,17 @@ class BeamSlice():
         self.flexural_stress_top = -self.b_moment * (self.bottom_thickness + self.web_height + self.top_thickness - self.centroidal_axis) / self.second_moment_area
         self.flexural_stress_bot = -self.b_moment * (-self.centroidal_axis) / self.second_moment_area
 
-        self.calc_Qs()
+        self.update_Qs()
 
         self.shear_stress_max = (self.shear_force * self.q_from_centroid) / (self.second_moment_area * self.web_thickness * 2)
         self.shear_stress_glue_top = (self.shear_force * self.q_from_glue_top) / (self.second_moment_area * self.web_thickness * 2)
         self.shear_stress_glue_bot = (self.shear_force * self.q_from_glue_bot) / (self.second_moment_area * self.web_thickness * 2)
     
     def moment_tension_failure_wall(self):
+        '''
+        Calculate bending moment required to cause a flexural stress resulting in a tensile failure at this beam slice
+        '''
+
         if self.b_moment < 0:
             failure_moment = (self.tension_ult * self.second_moment_area) / self.centroidal_axis
         else:
@@ -649,6 +970,10 @@ class BeamSlice():
         return failure_moment
 
     def moment_compression_failure_wall(self):
+        '''
+        Calculate bending moment required to cause a flexural stress resulting in a compressive failure at this beam slice
+        '''
+
         if self.b_moment < 0:
             failure_moment = (self.comp_ult * self.second_moment_area) / (self.bottom_thickness + self.web_height + self.top_thickness - self.centroidal_axis)
         else:
@@ -657,42 +982,70 @@ class BeamSlice():
         return failure_moment
     
     def force_shear_failure_wall(self):
-        self.calc_Qs()
+        '''
+        Calculate shear force required to cause a shear stress failure at the centroidal axis of this beam slice
+        '''
+
+        self.update_Qs()
         failure_force = self.shear_ult * 2 * self.web_thickness * self.second_moment_area / self.q_from_centroid
 
         return failure_force
 
     def force_shear_failure_glue_top(self):
-        self.calc_Qs()
+        '''
+        Calculate shear force required to cause a shear stress failure at the top glue joint of this beam slice
+        '''
+
+        self.update_Qs()
         failure_force = self.glue_shear_ult * 2 * self.web_thickness * self.second_moment_area / self.q_from_glue_top
         
         return failure_force
     
     def force_shear_failure_glue_bot(self):
-        self.calc_Qs()
+        '''
+        Calculate shear force required to cause a shear stress failure at the bottom glue joint of this beam slice
+        '''
+
+        self.update_Qs()
         failure_force = self.glue_shear_ult * 2 * self.web_thickness * self.second_moment_area / self.q_from_glue_bot
         
         return failure_force
     
     def moment_buckling_compressive_top(self):
+        '''
+        Calculate bending moment required to cause local buckling in the top plate of this beam slice
+        '''
+
         stress_crit = (4*math.pi**2*self.young_mod) / (12*(1-self.poisson**2)) * (self.top_thickness/self.web_spacing)**2
         failure_moment = stress_crit * self.second_moment_area / ((self.bottom_thickness + self.web_height + self.top_thickness/2) - self.centroidal_axis)
         
         return failure_moment
 
     def moment_buckling_compressive_bot(self):
+        '''
+        Calculate bending moment required to cause local buckling in the bottom plate of this beam slice
+        '''
+
         stress_crit = (4*math.pi**2*self.young_mod) / (12*(1-self.poisson**2)) * (self.bottom_thickness/self.bottom_width)**2
         failure_moment = stress_crit * self.second_moment_area / (self.bottom_thickness/2 - self.centroidal_axis)
         
         return failure_moment
 
-    def moment_buckling_flanges(self): 
+    def moment_buckling_flanges(self):
+        '''
+        Calculate bending moment required to cause local buckling in the top flanges of this beam slice
+        '''
+
         stress_crit = (0.425*math.pi**2*self.young_mod) / (12*(1-self.poisson**2)) * (self.top_thickness/((self.top_width - self.bottom_width)/2))**2
         failure_moment = stress_crit * self.second_moment_area / ((self.bottom_thickness + self.web_height + self.top_thickness/2) - self.centroidal_axis)
         
         return failure_moment
 
-    def moment_buckling_webs_flexural(self): #web_thickness -> top_thickness?
+    def moment_buckling_webs_flexural(self):
+        '''
+        Calculate bending moment required to cause a flexural stress resulting in local buckling in the webs of this beam slice
+        '''
+
         stress_crit = (6*math.pi**2*self.young_mod) / (12*(1-self.poisson**2)) * (self.web_thickness/(self.bottom_thickness + self.web_height - self.centroidal_axis))**2
         failure_moment = stress_crit * self.second_moment_area / (self.centroidal_axis - self.bottom_thickness)
         
@@ -701,20 +1054,24 @@ class BeamSlice():
 class Beam():
     def __init__(self, young_mod, poisson, tension_ult, comp_ult, shear_ult, glue_shear_ult, segments, diaphragms, resolution, a_rxn_loc=None, b_rxn_loc=None):
         '''
-        young_mod: Young's Modulus (MPa)
-        poisson: Poisson's Ratio
-        tension_ult: Tensile Strength (MPa)
-        comp_ult: Compressive Strength (MPa)
-        shear_ult: Shear Strength (MPa)
-        glue_shear_ult: Glue Shear Strength (MPa)
+        Beam data structure consisting of BeamSlices
+        Contains BeamSlice elements representing discrete segments of the beam
+        Various discrete beam slices allow for simple/consistent calculations given a varying cross section
 
-        segments: Cross-Sectional Segment Properties
-        diaphragms: Diaphragm Locations
+        young_mod: Young's modulus (MPa) [float]
+        poisson: Poisson's ratio [float]
+        tension_ult: Tensile strength (MPa) [float]
+        comp_ult: Compressive strength (MPa) [float]
+        shear_ult: Shear strength (MPa) [float]
+        glue_shear_ult: Glue shear strength (MPa) [float]
 
-        resolution: Number of Beam Slices (higher -> more accuracy)
+        segments: Cross-sectional segment properties -> also implies beam length [dict]
+        diaphragms: Diaphragm locations [list]
 
-        a_rxn_loc: Pivot reaction point A_x, A_y
-        b_rxn_loc: Roller reaction point B_y
+        resolution: Number of beam slices (higher -> more accuracy) [int]
+
+        a_rxn_loc: (x,y) pivot reaction point A_x, A_y [tuple]
+        b_rxn_loc: (x,y) roller reaction point B_y [tuple]
         '''
 
         self.beam_list = []
@@ -741,11 +1098,17 @@ class Beam():
         self.curv = []
 
         self.failures = {}
+        self.min_FOS = {}
 
         self.resolution = resolution
         self.dx = self.length / self.resolution
     
     def gen_beam(self):
+        '''
+        Generate Beam data structure consisting of linked BeamSlices
+        Number of beam slices is determined by resolution of beam
+        '''
+
         for i in range(self.resolution):
             cs_properties = None
             for segment in self.segments:
@@ -764,6 +1127,10 @@ class Beam():
             self.beam_list[-1].update_internal_properties()
     
     def update_external_forces(self):
+        '''
+        Update external forces on Beam by applying an external force to the beam slice at the location of each force
+        '''
+
         for i in range(self.resolution):
             self.beam_list[i].set_external_force(Vector(0,0,0))
             for loc in self.external_forces:
@@ -773,6 +1140,13 @@ class Beam():
             self.beam_list[i].update_internal_properties()
 
     def add_load(self, loc, load):
+        '''
+        Add external load to Beam
+
+        loc: (x,y) location of force [tuple]
+        load: Load force [Vector]
+        '''
+
         if loc in self.external_forces:
             self.external_forces[loc].add_vector(load)
         else:
@@ -782,14 +1156,20 @@ class Beam():
     
     def set_rxn_locs(self, a_rxn_loc, b_rxn_loc):
         '''
-        a_rxn_loc: Pivot reaction point A_x, A_y
-        b_rxn_loc: Roller reaction point B_y
+        Set locations of reaction forces
+
+        a_rxn_loc: (x,y) pivot reaction point A_x, A_y [tuple]
+        b_rxn_loc: (x,y) roller reaction point B_y [tuple]
         '''
 
         self.a_rxn_loc = a_rxn_loc
         self.b_rxn_loc = b_rxn_loc
     
     def update_rxn_forces(self):
+        '''
+        Update reaction forces on Beam based on current acting external loads
+        '''
+
         f_x_net = 0
         f_y_net = 0
         m_a_net = 0
@@ -811,7 +1191,36 @@ class Beam():
         self.add_load(self.a_rxn_loc, a_rxn)
         self.add_load(self.b_rxn_loc, b_rxn)
     
+    def calc_deflection(self, loc):
+        '''
+        Calculate deflection at point of interest using MAT #2
+        Assumes no known horizontal tangents
+        Finds tangential deflection between supports, and tangential deflection between support A and point of interest, then uses geometry to find deflection at point of interest
+
+        point_loc: (x,y) point of interest [tuple]
+
+        *Assumes that a_rxn_loc(x) < point_loc(x) < b_rxn_loc(x)
+        '''
+
+        tangential_deflection_at_b = 0
+        tangential_deflection_at_loc = 0
+
+        for i in range(self.resolution):
+            if self.a_rxn_loc[0] < i*self.dx:
+                if self.b_rxn_loc[0] >= i*self.dx:
+                    tangential_deflection_at_b += i*self.dx * self.beam_list[i].curvature * self.dx
+                if loc[0] >= i*self.dx:
+                    tangential_deflection_at_loc += i*self.dx * self.beam_list[i].curvature * self.dx
+
+        displacement_at_loc = (loc[0] - self.a_rxn_loc[0]) * (tangential_deflection_at_b / (self.b_rxn_loc[0] - self.a_rxn_loc[0])) - tangential_deflection_at_loc
+
+        return displacement_at_loc       
+    
     def forces_shear_buckling_webs(self):
+        '''
+        Calculate shear force required to cause local buckling in each span of the web between diaphragms
+        '''
+
         web_shear_failure_forces = {}
 
         for i in range(len(self.diaphragms)-1):
@@ -825,8 +1234,9 @@ class Beam():
             
             if initial_slice == None:
                 print("ERROR: no defined cross-sectional properties for diaphragm creation at", span[0])
+                return
 
-            initial_slice.calc_Qs()
+            initial_slice.update_Qs()
             stress_crit = (5*math.pi**2*self.young_mod)/(12*(1-self.poisson**2))*((initial_slice.web_thickness/(width*2/3))**2 +((initial_slice.web_thickness)/(initial_slice.web_height))**2)
             
             failure_force = stress_crit * 2 * initial_slice.web_thickness * initial_slice.second_moment_area / initial_slice.q_from_centroid
@@ -836,6 +1246,16 @@ class Beam():
         return web_shear_failure_forces
     
     def update_internal_properties(self):
+        '''
+        Update internal properties of Beam across its length
+        Properties vary across the length of the beam
+
+        Properties:
+        - Shear Force
+        - Bending Moment
+        - Curvature
+        '''
+
         self.sfd = []
         self.bmd = []
         self.curv = []
@@ -846,6 +1266,26 @@ class Beam():
             self.curv.append(self.beam_list[i].curvature)
 
     def update_failures(self):
+        '''
+        Update forces required to cause failure by each failure mode for every single beam slice
+
+        Forces:
+        - Shear Force
+        - Internal Bending Moment
+
+        Failure modes:
+        - Beam Web Shear Failure
+        - Beam Top Joint Shear Failure
+        - Beam Bottom Joint Shear Failure
+        - Beam Web Local Buckling Shear Failure
+        - Beam Web Flexural Tensile Yield Failure
+        - Beam Web Flexural Compressive Yield Failure
+        - Beam Top Plate Local Buckling Failure
+        - Beam Bottom Plate Local Buckling Failure
+        - Beam Top Flange Local Buckling Failure
+        - Beam Web Flexural Local Buckling Failure
+        '''
+
         self.failures["moment_tension_failure_wall"] = []
         self.failures["moment_compression_failure_wall"] = []
         self.failures["force_shear_failure_wall"] = []
@@ -884,7 +1324,72 @@ class Beam():
                 
             self.failures["forces_buckling_webs_shear"].append(web_shear_failure_force)
     
+    def update_min_FOS(self):
+        '''
+        Update FOS for each failure mode by iterating through the forces in every beam slice and finding the beam slices with the lowest FOS in each mode
+
+        Forces:
+        - Shear Force
+        - Internal Bending Moment
+
+        Failure modes:
+        - Beam Web Shear Failure
+        - Beam Top Joint Shear Failure
+        - Beam Bottom Joint Shear Failure
+        - Beam Web Local Buckling Shear Failure
+        - Beam Web Flexural Tensile Yield Failure
+        - Beam Web Flexural Compressive Yield Failure
+        - Beam Top Plate Local Buckling Failure
+        - Beam Bottom Plate Local Buckling Failure
+        - Beam Top Flange Local Buckling Failure
+        - Beam Web Flexural Local Buckling Failure
+        '''
+
+        sfd_modes = ["force_shear_failure_wall", "force_shear_failure_glue_top", "force_shear_failure_glue_bot", "forces_buckling_webs_shear"]
+
+        for mode in sfd_modes:
+            self.min_FOS[mode] = None
+            for i in range(len(self.sfd)):
+                if self.sfd[i] != 0:
+                    if self.failures[mode][i] / self.sfd[i] > 0:
+                        if self.min_FOS[mode] == None:
+                            self.min_FOS[mode] = self.failures[mode][i] / self.sfd[i]
+                        else:
+                            self.min_FOS[mode] = min(self.failures[mode][i] / self.sfd[i], self.min_FOS[mode])
+        
+        bmd_modes = ["moment_tension_failure_wall", "moment_compression_failure_wall", "moment_buckling_compressive_top", "moment_buckling_compressive_bot", "moment_buckling_flanges", "moment_buckling_webs_flexural"]
+
+        for mode in bmd_modes:
+            self.min_FOS[mode] = None
+            for i in range(len(self.bmd)):
+                if self.bmd[i] != 0:
+                    if self.failures[mode][i] / self.bmd[i] > 0:
+                        if self.min_FOS[mode] == None:
+                            self.min_FOS[mode] = self.failures[mode][i] / self.bmd[i]
+                        else:
+                            self.min_FOS[mode] = min(self.failures[mode][i] / self.bmd[i], self.min_FOS[mode])
+    
     def draw_internal_properties(self):
+        '''
+        Plot all internal forces along beam along with corresponding FOS for each failure mode
+
+        Forces:
+        - Shear Force
+        - Internal Bending Moment
+
+        Failure modes:
+        - Beam Web Shear Failure
+        - Beam Top Joint Shear Failure
+        - Beam Bottom Joint Shear Failure
+        - Beam Web Local Buckling Shear Failure
+        - Beam Web Flexural Tensile Yield Failure
+        - Beam Web Flexural Compressive Yield Failure
+        - Beam Top Plate Local Buckling Failure
+        - Beam Bottom Plate Local Buckling Failure
+        - Beam Top Flange Local Buckling Failure
+        - Beam Web Flexural Local Buckling Failure
+        '''
+
         self.update_internal_properties()
         self.update_failures()
 
@@ -893,23 +1398,23 @@ class Beam():
         for i in range(self.resolution):
             x_values.append(i*self.dx)
         
-        modes = ["force_shear_failure_wall", "force_shear_failure_glue_top", "force_shear_failure_glue_bot", "forces_buckling_webs_shear"]
+        sfd_modes = ["force_shear_failure_wall", "force_shear_failure_glue_top", "force_shear_failure_glue_bot", "forces_buckling_webs_shear"]
         plt.figure()
         for i in range(4):
             plt.subplot(2,2,i+1)
             plt.plot(x_values, self.sfd)
-            plt.plot(x_values, self.failures[modes[i]])
-            plt.title("SFD vs. " +modes[i])
+            plt.plot(x_values, self.failures[sfd_modes[i]])
+            plt.title("SFD vs. " +sfd_modes[i])
             plt.ylabel("Shear Force (N)")
 
-        modes = ["moment_tension_failure_wall", "moment_compression_failure_wall", "moment_buckling_compressive_top", "moment_buckling_compressive_bot", "moment_buckling_flanges", "moment_buckling_webs_flexural"]
+        bmd_modes = ["moment_tension_failure_wall", "moment_compression_failure_wall", "moment_buckling_compressive_top", "moment_buckling_compressive_bot", "moment_buckling_flanges", "moment_buckling_webs_flexural"]
         plt.figure()
         for i in range(6):
             plt.subplot(3,2,i+1)
             plt.gca().invert_yaxis()
             plt.plot(x_values, self.bmd)
-            plt.plot(x_values, self.failures[modes[i]])
-            plt.title("BMD vs. " +modes[i])
+            plt.plot(x_values, self.failures[bmd_modes[i]])
+            plt.title("BMD vs. " +bmd_modes[i])
             plt.ylabel("Internal Moment (Nmm)")
 
         plt.figure()
@@ -920,6 +1425,11 @@ class Beam():
 
 class Bridge():
     def __init__(self, truss_flattop, young_mod, poisson, tension_ult, comp_ult, shear_ult, glue_shear_ult, truss_cs_properties, truss_modified_cs_members, truss_modified_tab_length_nodes, beam_segments, beam_diaphragms, resolution=1000):
+        '''
+        Bridge class to provide a common interface with a bridge consisting of a Beam and Truss
+        Beam and Truss are treated independently, but Bridge ensures that common physical properties are kept consistent between the two
+        '''
+        
         self.truss = Truss(truss_flattop, young_mod, poisson, tension_ult, comp_ult, glue_shear_ult, truss_cs_properties, truss_modified_cs_members, truss_modified_tab_length_nodes)
         self.beam = Beam(young_mod, poisson, tension_ult, comp_ult, shear_ult, glue_shear_ult, beam_segments, beam_diaphragms, resolution)
 
@@ -930,8 +1440,30 @@ class Bridge():
         self.truss_height = None
         self.truss_flipped = False
 
+        self.min_FOS = {}
+    
+    def reset(self):
+        '''
+        Reset Bridge to initial state by reinitializing and regenerating Beam and Truss
+        '''
+
+        self.beam.__init__(self.beam.young_mod, self.beam.poisson, self.beam.tension_ult, self.beam.comp_ult, self.beam.shear_ult, self.beam.glue_shear_ult, self.beam.segments, self.beam.diaphragms, self.beam.resolution, self.beam.a_rxn_loc, self.beam.b_rxn_loc)
+        self.truss.__init__(self.truss.flattop, self.truss.young_mod, self.truss.poisson, self.truss.tension_ult, self.truss.comp_ult, self.truss.glue_shear_ult, self.truss.cs_properties, self.truss.modified_cs_members, self.truss.modified_tab_length_nodes, self.truss.a_rxn_loc, self.truss.b_rxn_loc)
+        
+        if self.periodic:
+            self.gen_bridge_periodic_truss(self.truss_triangle_count, self.truss_diagonal, self.truss_flipped)
+        else:
+            self.gen_bridge_nonperiodic_truss(self.truss_relative_base_xs, self.truss_height, self.truss_flipped)
 
     def gen_bridge_periodic_truss(self, triangle_count, diagonal, flipped=False):
+        '''
+        Generate Beam and Truss where Truss is a periodic and symmetrical Warren truss
+
+        triangle_count: Number of triangles in Warren truss [int]
+        diagonal: (x, y) distance between first 2 nodes [tuple]
+        flipped: True if bridge is upside-down [bool]
+        '''
+
         self.beam.gen_beam()
         self.truss.gen_periodic_warren_truss(triangle_count, diagonal, flipped)
 
@@ -941,6 +1473,14 @@ class Bridge():
         self.truss_flipped = flipped
 
     def gen_bridge_nonperiodic_truss(self, relative_base_xs, height, flipped=False):
+        '''
+        Generate Beam and Truss where Truss is a nonperiodic and asymmetrical Warren truss
+
+        relative_base_xs: Relative x distances between the nodes at the base of the truss [list]
+        height: height of bridge [float]
+        flipped: True if bridge is upside-down [bool]
+        '''
+
         self.beam.gen_beam()
         self.truss.gen_nonperiodic_warren_truss(relative_base_xs, height, flipped)
 
@@ -950,10 +1490,21 @@ class Bridge():
         self.truss_flipped = flipped
 
     def set_rxn_locs(self, a_rxn_loc, b_rxn_loc):
+        '''
+        Set locations of reaction forces on Bridge (Truss + Beam)
+
+        a_rxn_loc: (x,y) pivot reaction point A_x, A_y [tuple]
+        b_rxn_loc: (x,y) roller reaction point B_y [tuple]
+        '''
+
         self.truss.set_rxn_locs(a_rxn_loc, b_rxn_loc)
         self.beam.set_rxn_locs(a_rxn_loc, b_rxn_loc)
     
     def update_bridge(self):
+        '''
+        Update reaction forces, internal forces/properties, and failure mode information for Bridge (Truss + Beam)
+        '''
+
         self.truss.update_rxn_forces()
         self.beam.update_rxn_forces()
         
@@ -961,25 +1512,52 @@ class Bridge():
         self.truss.update_failures()
         self.beam.update_internal_properties()
         self.beam.update_failures()
+
+        self.truss.update_min_FOS()
+        self.beam.update_min_FOS()
     
     def add_load(self, loc, load):
+        '''
+        Add external load to Bridge (Truss + Beam)
+
+        loc: (x,y) location of force [tuple]
+        load: Load force [Vector]
+        '''
+
         self.truss.add_load(loc, Vector(load.x_dir, load.y_dir, load.get_mag() * 0.5))
         self.beam.add_load(loc, Vector(load.x_dir, load.y_dir, load.get_mag() * 0.5))
     
-    def reset(self):
-        self.beam.__init__(self.beam.young_mod, self.beam.poisson, self.beam.tension_ult, self.beam.comp_ult, self.beam.shear_ult, self.beam.glue_shear_ult, self.beam.segments, self.beam.diaphragms, self.beam.resolution, self.beam.a_rxn_loc, self.beam.b_rxn_loc)
-        self.truss.__init__(self.truss.flattop, self.truss.young_mod, self.truss.poisson, self.truss.tension_ult, self.truss.comp_ult, self.truss.glue_shear_ult, self.truss.cs_properties, self.truss.modified_cs_members, self.truss.modified_tab_length_nodes, self.truss.a_rxn_loc, self.truss.b_rxn_loc)
+    def update_min_FOS(self):
+        '''
+        Update FOS for each failure mode by consolidating the lowest FOS from Truss and Beam
+        '''
+
+        self.update_bridge()
+
+        for mode in self.truss.min_FOS:
+            self.min_FOS[mode] = self.truss.min_FOS[mode]
         
-        if self.periodic:
-            self.gen_bridge_periodic_truss(self.truss_triangle_count, self.truss_diagonal, self.truss_flipped)
-        else:
-            self.gen_bridge_nonperiodic_truss(self.truss_relative_base_xs, self.truss_height, self.truss_flipped)
+        for mode in self.beam.min_FOS:
+            self.min_FOS[mode] = self.beam.min_FOS[mode]
+        
+        print("Min. FOS by Failure Mode:")
+        for mode in self.min_FOS:
+            print(str(mode) +":", self.min_FOS[mode])
 
     def draw_properties(self):
         self.beam.draw_internal_properties()
         self.truss.draw_internal_forces()
 
 def simulate_train_load(bridge, x, train_weight, train_wheel_spacing_rel):
+    '''
+    Simulate train loading at variable positions by resetting bridge and applying external loads at locations of train wheels
+    
+    bridge: Reference to Bridge [Bridge]
+    x: x location of front of train [float]
+    train_weight: Total weight of train (N) [float]
+    train_wheel_spaing_rel: Relative x spacing of wheels from front to back of train [list]
+    '''
+
     bridge.reset()
 
     bridge_height = abs(bridge.truss.truss_list[1].loc[1] - bridge.truss.truss_list[0].loc[1])
@@ -1009,6 +1587,16 @@ def simulate_train_load(bridge, x, train_weight, train_wheel_spacing_rel):
     return truss_internal_forces, truss_node_forces, beam_sfd, beam_bmd, beam_curv
 
 def run_train(bridge, train_weight, train_wheel_spacing_rel, resolution):
+    '''
+    Simulate running train across bridge by simulating train loading at various discrete positions
+    All of the "worst case" bridge properties are saved, so that the final result is an envelope of the bridge properties closest to failure (which do not necessarily all occur at once)
+
+    bridge: Reference to Bridge [Bridge]
+    train_weight: Total weight of train (N) [float]
+    train_wheel_spaing_rel: Relative x spacing of wheels from front to back of train [list]
+    resolution: Number of discrete steps to simulate train loading over [int]
+    '''
+
     train_length = sum(train_wheel_spacing_rel)
 
     dx = (bridge.beam.length + train_length) / resolution
@@ -1061,13 +1649,22 @@ def run_train(bridge, train_weight, train_wheel_spacing_rel, resolution):
     bridge.beam.bmd = beam_bmd_envelope
     bridge.beam.curv = beam_curv_envelope
 
-    bridge.draw_properties()
-
-'''--edit--'''
+'''
+Editable Bridge Properties
+--------------------------
+'''
 bridge_height = 100
 
-truss_cs_properties =  {"width": 75, "thickness": 1.27, "tab_length": 10}
-truss_modified_cs_members = {   (1,3): {"width": 100, "thickness": 1.27},
+'''
+Truss member cross sectional properties
+'''
+truss_cs_properties =  {"width": 75, "thickness": 1.27, "tab_width": 65, "tab_length": 10}
+
+'''
+Truss members with modified cross sectional properties (reinforced members)
+(node_a_index, node_b_index) represents the member from node_a to node_b
+'''
+truss_modified_cs_members = {   (1,3): {"width": 100, "thickness": 1.27},                   
                                 (3,5): {"width": 100, "thickness": 1.27},
                                 (9,11): {"width": 100, "thickness": 1.27},
                                 (11,13): {"width": 100, "thickness": 1.27},
@@ -1079,15 +1676,29 @@ truss_modified_cs_members = {   (1,3): {"width": 100, "thickness": 1.27},
                                 (9,10): {"width": 67.5, "thickness": 2.1166},
                                 (10,12): {"width": 67.5, "thickness": 2.1166},
                                 (11,12): {"width": 67.5, "thickness": 2.1166},
-                                (12,14): {"width": 69.4444, "thickness": 2.286},
+                                (12,14): {"width": 75, "thickness": 2.54},
                                 (14,15): {"width": 75, "thickness": 2.54},
                                 (14,16): {"width": 75, "thickness": 2.54},
                                 (16,17): {"width": 67.5, "thickness": 2.1166},
                                 (16,18): {"width": 75, "thickness": 2.54},
-                                (17,18): {"width": 75, "thickness": 2.54}}
+                                (17,18): {"width": 61.5384, "thickness": 4.1275}}
 
+'''
+Truss joint nodes with modified glue tab lengths (reinforced tabs)
+'''
 truss_modified_tab_length_nodes = {4: 15, 5: 20, 6:20, 7: 25, 8: 20, 11: 15, 12: 20, 13: 20, 14: 20, 15: 25, 16: 25, 17: 25}
 
+'''
+Relative distances between the base of each truss "triangle" (adjacent pair of diagonal members) from the start to end of the truss
+Allows for definition of asymmetrical and non periodic trusses
+'''
+truss_relative_base_xs = [40,232.5,232.5,130,195,195,110,115,40]
+
+'''
+Discrete beam segments and their cross sectional properties
+(x_start, x_end) represents the beam segment from x_start to x_end
+Cross sectional properties defined in a corresponding dictionary for each segment
+'''
 beam_segments =    [((0, 388.75),      {"top_thickness": 1.27,          #0-5
                                         "top_width": 100,
                                         "web_thickness": 1.27,
@@ -1143,31 +1754,54 @@ beam_segments =    [((0, 388.75),      {"top_thickness": 1.27,          #0-5
                                         "bottom_width": 75})
                     ]
 
-truss_relative_base_xs = [40,232.5,232.5,130,195,195,110,115,40]
-
-'''--do not edit--'''
+'''
+Static Main Code
+----------------
+'''
 beam_diaphragms = []
 
+'''
+Place approximated vertical diaphragms at horizontal midpoint of each diagonal truss member
+'''
 x=0
 for i in truss_relative_base_xs:
     beam_diaphragms.append(x + i/4)
     beam_diaphragms.append(x + 3*i/4)
     x += i
 
+'''
+Generate bridge with defined physical parameters
+
+young_mod: 4000 MPa
+poisson: 0.2
+tension_ult: 30 MPa
+comp_ult: 6 MPa
+shear_ult: 4 MPa
+glue_shear_ult: 2 MPa
+'''
 bridge = Bridge(True, 4000, 0.2, 30, 6, 4, 2, truss_cs_properties, truss_modified_cs_members, truss_modified_tab_length_nodes, beam_segments, beam_diaphragms, 1000)
 bridge.gen_bridge_nonperiodic_truss(truss_relative_base_xs, bridge_height+10, False)
 
 bridge.set_rxn_locs((15,0), (1075,0))
 bridge.reset()
 
-run_train(bridge, 400, (52, 176, 164, 176, 164, 176), 100)
-#bridge.add_load((565,bridge_height+10), Vector(0,-1,1000))
-#bridge.add_load((1265,bridge_height+10), Vector(0,-1,1000))
+'''
+Simulate either train loading or point loading
+'''
+#run_train(bridge, 400, (52, 176, 164, 176, 164, 176), 100)
 
+bridge.add_load((565,bridge_height+10), Vector(0,-1,1185))
+bridge.add_load((1265,bridge_height+10), Vector(0,-1,1185))
 bridge.update_bridge()
+
+bridge.update_min_FOS()
 bridge.draw_properties()
 
-print(bridge.truss.calc_displacement_at_node((640, 0), Vector(0, -1, 1)))
+'''
+Calculate deflection due to applied loads
+'''
+print("Truss Deflection:", bridge.truss.calc_displacement((915, 0), Vector(0, 1, 1)))
+print("Beam Deflection:", bridge.beam.calc_deflection((915, 0)))
 plt.show()
 
-bridge.truss.draw_truss(True)
+bridge.truss.draw_truss()
