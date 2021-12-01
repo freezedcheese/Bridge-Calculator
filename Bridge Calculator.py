@@ -627,8 +627,50 @@ class Truss():
                             self.min_FOS[node_mode] = self.failures[node_mode][i] / self.node_forces[i]
                         else:
                             self.min_FOS[node_mode] = min(self.failures[node_mode][i] / self.node_forces[i], self.min_FOS[node_mode])
+    
+    def update_min_envelope_FOS(self, force_envelopes):
+        '''
+        Update FOS for each failure mode given truss force envelopes by iterating through and finding the joints and members with the lowest FOS at any point in time
 
-    def draw_internal_forces(self):
+        force_envelopes: Dictionary containining force envelope data for each force [dict]
+
+        Forces:
+        - Internal Member Forces
+        - Joint Shear Forces
+
+        Failure modes:
+        - Truss Member Tensile Yield Failure
+        - Truss Member Compressive Yield Failure
+        - Truss Member Local Buckling Failure
+        - Truss Joint Glue Tab Shear Failure
+        '''
+
+        member_modes = ["force_tension_failure_member", "force_compression_failure_member", "force_buckling_member"]
+
+        for mode in member_modes:
+            self.min_FOS[mode] = None
+            for key in self.internal_forces:
+                for internal_forces_envelope in (force_envelopes["truss_internal_forces_positive_envelope"], force_envelopes["truss_internal_forces_negative_envelope"]):
+                    if internal_forces_envelope[key] != 0:
+                        if self.failures[mode][key] / internal_forces_envelope[key] > 0:
+                            if self.min_FOS[mode] == None:
+                                self.min_FOS[mode] = self.failures[mode][key] / internal_forces_envelope[key]
+                            else:
+                                self.min_FOS[mode] = min(self.failures[mode][key] / internal_forces_envelope[key], self.min_FOS[mode])
+            
+        node_mode = "force_shear_failure_glue_tab"
+
+        self.min_FOS[node_mode] = None
+        for i in range(len(self.node_forces)):
+            for node_forces_envelope in (force_envelopes["truss_node_forces_positive_envelope"], force_envelopes["truss_node_forces_negative_envelope"]):
+                if node_forces_envelope[i] != 0:
+                    if self.failures[node_mode][i] / node_forces_envelope[i] > 0:
+                        if self.min_FOS[node_mode] == None:
+                            self.min_FOS[node_mode] = self.failures[node_mode][i] / node_forces_envelope[i]
+                        else:
+                            self.min_FOS[node_mode] = min(self.failures[node_mode][i] / node_forces_envelope[i], self.min_FOS[node_mode])
+
+    def draw_internal_forces(self, override_internal_forces_positive_dict=None, override_internal_forces_negative_dict=None, override_node_forces_positive_list=None, override_node_forces_negative_list=None):
         '''
         Plot all joint and member internal forces along with corresponding FOS for each failure mode
 
@@ -653,7 +695,12 @@ class Truss():
         force_tension_failure_list = []
         force_compression_failure_list = []
         force_buckling_member_list = []
+        
         internal_forces_list = []
+
+        if override_internal_forces_positive_dict != None and override_internal_forces_negative_dict != None:
+            override_internal_forces_positive_list = []
+            override_internal_forces_negative_list = []
 
         member_labels = []
 
@@ -662,6 +709,9 @@ class Truss():
             force_compression_failure_list.append(self.failures["force_compression_failure_member"][key])
             force_buckling_member_list.append(self.failures["force_buckling_member"][key])
             internal_forces_list.append(self.internal_forces[key])
+            if override_internal_forces_positive_dict != None and override_internal_forces_negative_dict != None:
+                override_internal_forces_positive_list.append(override_internal_forces_positive_dict[key])
+                override_internal_forces_negative_list.append(override_internal_forces_negative_dict[key])
 
             member_labels.append(key)
         
@@ -669,7 +719,11 @@ class Truss():
         plt.bar(member_x_values, force_tension_failure_list, color="tab:blue", zorder=1)
         plt.bar(member_x_values, force_compression_failure_list, color="tab:red", zorder=2)
         plt.bar(member_x_values, force_buckling_member_list, color="tab:orange", zorder=3)
-        plt.bar(member_x_values, internal_forces_list, color="tab:green", zorder=4)
+        if override_internal_forces_positive_dict != None and override_internal_forces_negative_dict != None:
+            plt.bar(member_x_values, override_internal_forces_positive_list, color="tab:green", zorder=2)
+            plt.bar(member_x_values, override_internal_forces_negative_list, color="tab:green", zorder=2)
+        else:
+            plt.bar(member_x_values, internal_forces_list, color="tab:green", zorder=2)
         plt.title("Member Loads")
         plt.ylabel("Force (N)")
 
@@ -693,7 +747,11 @@ class Truss():
         
         plt.figure()
         plt.bar(node_x_values, force_shear_failure_glue_tab_list, color="tab:red", zorder=1)
-        plt.bar(node_x_values, node_forces_list, color="tab:green", zorder=2)
+        if override_node_forces_positive_list != None and override_node_forces_negative_list != None:
+            plt.bar(node_x_values, override_node_forces_positive_list, color="tab:green", zorder=2)
+            plt.bar(node_x_values, override_node_forces_negative_list, color="tab:green", zorder=2)
+        else:
+            plt.bar(node_x_values, node_forces_list, color="tab:green", zorder=2)
         plt.title("Node Glue Tab Shear Force")
         plt.ylabel("Shear Force (N)")
 
@@ -760,6 +818,7 @@ class BeamSlice():
 
         cs_properties: Cross-sectional properties [dict]
         '''
+        self.x = 0
 
         self.dx = dx
 
@@ -810,6 +869,7 @@ class BeamSlice():
         '''
 
         if self.last_slice != None:
+            self.x = self.last_slice.x + self.dx
             self.shear_force = self.last_slice.shear_force
             self.b_moment = self.last_slice.b_moment
             self.curvature = self.last_slice.curvature
@@ -892,6 +952,7 @@ class BeamSlice():
             I8 = self.tab_width*self.web_thickness**3/12
 
         self.second_moment_area = I1 + I2 + I3 + I4 + I5 + I6 + I7 + I8 + A1*(self.centroidal_axis-y1)**2 + A2*(self.centroidal_axis-y2)**2 + A3*(self.centroidal_axis-y3)**2 + A4*(self.centroidal_axis-y4)**2 + A5*(self.centroidal_axis-y5)**2 + A6*(self.centroidal_axis-y6)**2 + + A7*(self.centroidal_axis-y7)**2 + + A8*(self.centroidal_axis-y8)**2
+        
 
     def update_Qs(self):
         '''
@@ -1369,7 +1430,54 @@ class Beam():
                         else:
                             self.min_FOS[mode] = min(self.failures[mode][i] / self.bmd[i], self.min_FOS[mode])
     
-    def draw_internal_properties(self):
+    def update_min_envelope_FOS(self, property_envelope):
+        '''
+        Update FOS for each failure mode given beam property envelopes by iterating through and finding the beam slice with the lowest FOS at any point in time
+
+        Forces:
+        - Shear Force
+        - Internal Bending Moment
+
+        Failure modes:
+        - Beam Web Shear Failure
+        - Beam Top Joint Shear Failure
+        - Beam Bottom Joint Shear Failure
+        - Beam Web Local Buckling Shear Failure
+        - Beam Web Flexural Tensile Yield Failure
+        - Beam Web Flexural Compressive Yield Failure
+        - Beam Top Plate Local Buckling Failure
+        - Beam Bottom Plate Local Buckling Failure
+        - Beam Top Flange Local Buckling Failure
+        - Beam Web Flexural Local Buckling Failure
+        '''
+
+        sfd_modes = ["force_shear_failure_wall", "force_shear_failure_glue_top", "force_shear_failure_glue_bot", "forces_buckling_webs_shear"]
+
+        for mode in sfd_modes:
+            self.min_FOS[mode] = None
+            for i in range(len(self.sfd)):
+                for sfd_envelope in (property_envelope["beam_sfd_positive_envelope"], property_envelope["beam_sfd_negative_envelope"]):
+                    if sfd_envelope[i] != 0:
+                        if self.failures[mode][i] / sfd_envelope[i] > 0:
+                            if self.min_FOS[mode] == None:
+                                self.min_FOS[mode] = self.failures[mode][i] / sfd_envelope[i]
+                            else:
+                                self.min_FOS[mode] = min(self.failures[mode][i] / sfd_envelope[i], self.min_FOS[mode])
+        
+        bmd_modes = ["moment_tension_failure_wall", "moment_compression_failure_wall", "moment_buckling_compressive_top", "moment_buckling_compressive_bot", "moment_buckling_flanges", "moment_buckling_webs_flexural"]
+
+        for mode in bmd_modes:
+            self.min_FOS[mode] = None
+            for i in range(len(self.bmd)):
+                for bmd_envelope in (property_envelope["beam_bmd_positive_envelope"], property_envelope["beam_bmd_negative_envelope"]):
+                    if bmd_envelope[i] != 0:
+                        if self.failures[mode][i] / bmd_envelope[i] > 0:
+                            if self.min_FOS[mode] == None:
+                                self.min_FOS[mode] = self.failures[mode][i] / bmd_envelope[i]
+                            else:
+                                self.min_FOS[mode] = min(self.failures[mode][i] / bmd_envelope[i], self.min_FOS[mode])
+    
+    def draw_internal_properties(self, override_positive_sfd_list=None, override_negative_sfd_list=None, override_positive_bmd_list=None, override_negative_bmd_list=None, override_positive_curv_list=None, override_negative_curv_list=None):
         '''
         Plot all internal forces along beam along with corresponding FOS for each failure mode
 
@@ -1402,8 +1510,12 @@ class Beam():
         plt.figure()
         for i in range(4):
             plt.subplot(2,2,i+1)
-            plt.plot(x_values, self.sfd)
-            plt.plot(x_values, self.failures[sfd_modes[i]])
+            if override_positive_sfd_list != None and override_positive_sfd_list != None:
+                plt.plot(x_values, override_positive_sfd_list, color="tab:blue")
+                plt.plot(x_values, override_negative_sfd_list, color="tab:blue")
+            else:
+                plt.plot(x_values, self.sfd, color="tab:blue")
+            plt.plot(x_values, self.failures[sfd_modes[i]], color="tab:orange")
             plt.title("SFD vs. " +sfd_modes[i])
             plt.ylabel("Shear Force (N)")
 
@@ -1412,14 +1524,22 @@ class Beam():
         for i in range(6):
             plt.subplot(3,2,i+1)
             plt.gca().invert_yaxis()
-            plt.plot(x_values, self.bmd)
-            plt.plot(x_values, self.failures[bmd_modes[i]])
+            if override_positive_bmd_list != None and override_positive_bmd_list != None:
+                plt.plot(x_values, override_positive_bmd_list, color="tab:blue")
+                plt.plot(x_values, override_negative_bmd_list, color="tab:blue")
+            else:
+                plt.plot(x_values, self.bmd, color="tab:blue")
+            plt.plot(x_values, self.failures[bmd_modes[i]], color="tab:orange")
             plt.title("BMD vs. " +bmd_modes[i])
             plt.ylabel("Internal Moment (Nmm)")
 
         plt.figure()
         plt.gca().invert_yaxis()
-        plt.plot(x_values, self.curv)
+        if override_positive_curv_list != None and override_positive_curv_list != None:
+            plt.plot(x_values, override_positive_curv_list, color="tab:blue")
+            plt.plot(x_values, override_negative_curv_list, color="tab:blue")
+        else:
+            plt.plot(x_values, self.curv, color="tab:blue")
         plt.title("Curvature")
         plt.ylabel("Curvature (rad/mm)")
 
@@ -1502,7 +1622,7 @@ class Bridge():
     
     def update_bridge(self):
         '''
-        Update reaction forces, internal forces/properties, and failure mode information for Bridge (Truss + Beam)
+        Update reaction forces and internal forces/properties for Bridge (Truss + Beam)
         '''
 
         self.truss.update_rxn_forces()
@@ -1513,9 +1633,6 @@ class Bridge():
         self.beam.update_internal_properties()
         self.beam.update_failures()
 
-        self.truss.update_min_FOS()
-        self.beam.update_min_FOS()
-    
     def add_load(self, loc, load):
         '''
         Add external load to Bridge (Truss + Beam)
@@ -1525,11 +1642,18 @@ class Bridge():
         '''
 
         self.truss.add_load(loc, Vector(load.x_dir, load.y_dir, load.get_mag() * 0.5))
-        self.beam.add_load(loc, Vector(load.x_dir, load.y_dir, load.get_mag() * 0.5))
+        self.beam.add_load(loc, Vector(load.x_dir, load.y_dir, load.get_mag()))
     
-    def update_min_FOS(self):
+    def update_bridge_FOS(self):
         '''
-        Update FOS for each failure mode by consolidating the lowest FOS from Truss and Beam
+        Update FOS for Truss and Beam
+        '''
+        self.truss.update_min_FOS()
+        self.beam.update_min_FOS()
+
+    def display_bridge_FOS(self):
+        '''
+        Display FOS for each failure mode by consolidating the lowest FOS from Truss and Beam
         '''
 
         self.update_bridge()
@@ -1544,9 +1668,13 @@ class Bridge():
         for mode in self.min_FOS:
             print(str(mode) +":", self.min_FOS[mode])
 
-    def draw_properties(self):
-        self.beam.draw_internal_properties()
-        self.truss.draw_internal_forces()
+    def draw_properties(self, override_properties_and_forces=None):
+        if override_properties_and_forces != None:
+            self.truss.draw_internal_forces(override_properties_and_forces["truss_internal_forces_positive_envelope"], override_properties_and_forces["truss_internal_forces_negative_envelope"], override_properties_and_forces["truss_node_forces_positive_envelope"], override_properties_and_forces["truss_node_forces_negative_envelope"])
+            self.beam.draw_internal_properties(override_properties_and_forces["beam_sfd_positive_envelope"], override_properties_and_forces["beam_sfd_negative_envelope"], override_properties_and_forces["beam_bmd_positive_envelope"], override_properties_and_forces["beam_bmd_negative_envelope"], override_properties_and_forces["beam_curv_positive_envelope"], override_properties_and_forces["beam_curv_negative_envelope"])
+        else:
+            self.truss.draw_internal_forces()
+            self.beam.draw_internal_properties()
 
 def simulate_train_load(bridge, x, train_weight, train_wheel_spacing_rel):
     '''
@@ -1601,53 +1729,92 @@ def run_train(bridge, train_weight, train_wheel_spacing_rel, resolution):
 
     dx = (bridge.beam.length + train_length) / resolution
 
-    truss_internal_forces_envelope = {}
-    truss_node_forces_envelope = []
+    truss_internal_forces_positive_envelope = {}
+    truss_internal_forces_negative_envelope = {}
+    truss_node_forces_positive_envelope = []
+    truss_node_forces_negative_envelope = []
 
-    beam_sfd_envelope = []
-    beam_bmd_envelope = []
-    beam_curv_envelope = []
+    beam_sfd_positive_envelope = []
+    beam_sfd_negative_envelope = []
+    beam_bmd_positive_envelope = []
+    beam_bmd_negative_envelope = []
+    beam_curv_positive_envelope = []
+    beam_curv_negative_envelope = []
 
     for i in range(resolution):
         truss_internal_forces, truss_node_forces, beam_sfd, beam_bmd, beam_curv = simulate_train_load(bridge, i*dx, train_weight, train_wheel_spacing_rel)
         for key in truss_internal_forces:
-            if key not in truss_internal_forces_envelope:
-                truss_internal_forces_envelope[key] = truss_internal_forces[key]
-            elif abs(truss_internal_forces[key]) > abs(truss_internal_forces_envelope[key]):
-                truss_internal_forces_envelope[key] = truss_internal_forces[key]
+            if key not in truss_internal_forces_positive_envelope:
+                truss_internal_forces_positive_envelope[key] = truss_internal_forces[key]
+            elif truss_internal_forces[key] > truss_internal_forces_positive_envelope[key]:
+                truss_internal_forces_positive_envelope[key] = truss_internal_forces[key]
+            
+            if key not in truss_internal_forces_negative_envelope:
+                truss_internal_forces_negative_envelope[key] = truss_internal_forces[key]
+            elif truss_internal_forces[key] < truss_internal_forces_negative_envelope[key]:
+                truss_internal_forces_negative_envelope[key] = truss_internal_forces[key]
         
         for j in range(len(truss_node_forces)):
-            if j > len(truss_node_forces_envelope)-1:
-                truss_node_forces_envelope.append(truss_node_forces[j])
-            elif abs(truss_node_forces[j]) > abs(truss_node_forces_envelope[j]):
-                truss_node_forces_envelope[j] = truss_node_forces[j]
+            if j > len(truss_node_forces_positive_envelope)-1:
+                truss_node_forces_positive_envelope.append(truss_node_forces[j])
+            elif truss_node_forces[j] > truss_node_forces_positive_envelope[j]:
+                truss_node_forces_positive_envelope[j] = truss_node_forces[j]
+            
+            if j > len(truss_node_forces_negative_envelope)-1:
+                truss_node_forces_negative_envelope.append(truss_node_forces[j])
+            elif truss_node_forces[j] < truss_node_forces_negative_envelope[j]:
+                truss_node_forces_negative_envelope[j] = truss_node_forces[j]
         
         for j in range(len(beam_sfd)):
-            if j > len(beam_sfd_envelope)-1:
-                beam_sfd_envelope.append(beam_sfd[j])
-            elif abs(beam_sfd[j]) > abs(beam_sfd_envelope[j]):
-                beam_sfd_envelope[j] = beam_sfd[j]
+            if j > len(beam_sfd_positive_envelope)-1:
+                beam_sfd_positive_envelope.append(beam_sfd[j])
+            elif beam_sfd[j] > beam_sfd_positive_envelope[j]:
+                beam_sfd_positive_envelope[j] = beam_sfd[j]
+
+            if j > len(beam_sfd_negative_envelope)-1:
+                beam_sfd_negative_envelope.append(beam_sfd[j])
+            elif beam_sfd[j] < beam_sfd_negative_envelope[j]:
+                beam_sfd_negative_envelope[j] = beam_sfd[j]
         
         for j in range(len(beam_bmd)):
-            if j > len(beam_bmd_envelope)-1:
-                beam_bmd_envelope.append(beam_bmd[j])
-            elif abs(beam_bmd[j]) > abs(beam_bmd_envelope[j]):
-                beam_bmd_envelope[j] = beam_bmd[j]
+            if j > len(beam_bmd_positive_envelope)-1:
+                beam_bmd_positive_envelope.append(beam_bmd[j])
+            elif beam_bmd[j] > beam_bmd_positive_envelope[j]:
+                beam_bmd_positive_envelope[j] = beam_bmd[j]
+            
+            if j > len(beam_bmd_negative_envelope)-1:
+                beam_bmd_negative_envelope.append(beam_bmd[j])
+            elif beam_bmd[j] < beam_bmd_negative_envelope[j]:
+                beam_bmd_negative_envelope[j] = beam_bmd[j]
         
         for j in range(len(beam_curv)):
-            if j > len(beam_curv_envelope)-1:
-                beam_curv_envelope.append(beam_curv[j])
-            elif abs(beam_curv[j]) > abs(beam_curv_envelope[j]):
-                beam_curv_envelope[j] = beam_curv[j]
+            if j > len(beam_curv_positive_envelope)-1:
+                beam_curv_positive_envelope.append(beam_curv[j])
+            elif beam_curv[j] > beam_curv_positive_envelope[j]:
+                beam_curv_positive_envelope[j] = beam_curv[j]
+            
+            if j > len(beam_curv_negative_envelope)-1:
+                beam_curv_negative_envelope.append(beam_curv[j])
+            elif beam_curv[j] < beam_curv_negative_envelope[j]:
+                beam_curv_negative_envelope[j] = beam_curv[j]
         
         print("Finished", str(i+1) +"/" +str(resolution), "iterations")
     
-    bridge.truss.internal_forces = truss_internal_forces_envelope
-    bridge.truss.node_forces = truss_node_forces_envelope
+    force_and_property_envelopes =     {"truss_internal_forces_positive_envelope": truss_internal_forces_positive_envelope, 
+                                        "truss_internal_forces_negative_envelope": truss_internal_forces_negative_envelope, 
+                                        "truss_node_forces_positive_envelope": truss_node_forces_positive_envelope, 
+                                        "truss_node_forces_negative_envelope": truss_node_forces_negative_envelope, 
+                                        "beam_sfd_positive_envelope": beam_sfd_positive_envelope,
+                                        "beam_sfd_negative_envelope": beam_sfd_negative_envelope,
+                                        "beam_bmd_positive_envelope": beam_bmd_positive_envelope,
+                                        "beam_bmd_negative_envelope": beam_bmd_negative_envelope,
+                                        "beam_curv_positive_envelope": beam_curv_positive_envelope,
+                                        "beam_curv_negative_envelope": beam_curv_negative_envelope}
+    
+    bridge.truss.update_min_envelope_FOS(force_and_property_envelopes)
+    bridge.beam.update_min_envelope_FOS(force_and_property_envelopes)
 
-    bridge.beam.sfd = beam_sfd_envelope
-    bridge.beam.bmd = beam_bmd_envelope
-    bridge.beam.curv = beam_curv_envelope
+    return force_and_property_envelopes
 
 '''
 Editable Bridge Properties
@@ -1699,6 +1866,17 @@ Discrete beam segments and their cross sectional properties
 (x_start, x_end) represents the beam segment from x_start to x_end
 Cross sectional properties defined in a corresponding dictionary for each segment
 '''
+# beam_segments =    [((0, 1290),        {"top_thickness": 1.27,
+#                                         "top_width": 100,
+#                                         "web_thickness": 1.27,
+#                                         "web_height": 75-1.27*2,
+#                                         "web_spacing": 80-1.27*2,
+#                                         "tab_width": 10,
+#                                         "bottom_thickness": 1.27,
+#                                         "bottom_width": 80})
+                    # ]
+# beam_diaphragms = [0, 30, 535, 565, 1045, 1075, 1060, 1090]
+
 beam_segments =    [((0, 388.75),      {"top_thickness": 1.27,          #0-5
                                         "top_width": 100,
                                         "web_thickness": 1.27,
@@ -1786,22 +1964,24 @@ bridge.set_rxn_locs((15,0), (1075,0))
 bridge.reset()
 
 '''
-Simulate either train loading or point loading
+Simulate either train loading or point loading by commentin
 '''
-#run_train(bridge, 400, (52, 176, 164, 176, 164, 176), 100)
+# bridge_force_and_property_envelopes = run_train(bridge, 400, (52, 176, 164, 176, 164, 176), 10)
+# bridge.display_bridge_FOS()
+# bridge.draw_properties(bridge_force_and_property_envelopes)
 
-bridge.add_load((565,bridge_height+10), Vector(0,-1,1185))
-bridge.add_load((1265,bridge_height+10), Vector(0,-1,1185))
+bridge.add_load((565,bridge_height+10), Vector(0,-1,1500))
+bridge.add_load((1265,bridge_height+10), Vector(0,-1,1500))
 bridge.update_bridge()
-
-bridge.update_min_FOS()
+bridge.update_bridge_FOS()
+bridge.display_bridge_FOS()
 bridge.draw_properties()
 
 '''
 Calculate deflection due to applied loads
 '''
-print("Truss Deflection:", bridge.truss.calc_displacement((915, 0), Vector(0, 1, 1)))
-print("Beam Deflection:", bridge.beam.calc_deflection((915, 0)))
+print("Truss Deflection:", bridge.truss.calc_displacement((530, 0), Vector(0, 1, 1)))
+print("Beam Deflection:", bridge.beam.calc_deflection((530, 0)))
 plt.show()
 
 bridge.truss.draw_truss()
